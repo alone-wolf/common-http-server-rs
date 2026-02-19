@@ -10,9 +10,11 @@
    防护中间件（DDoS / IP Filter / Rate Limit / Size Limit）。
 4. `MONITORING_GUIDE.md`  
    监控、指标、健康检查。
-5. `CORS_GUIDE.md`  
+5. `WEBSOCKET_GUIDE.md`  
+   WebSocket 实时通信（JSON 协议、group/event、auth 鉴权）。
+6. `CORS_GUIDE.md`  
    跨域配置与常见误区。
-6. `SECURITY_NOTES.md`  
+7. `SECURITY_NOTES.md`  
    生产安全基线与硬化建议（强烈建议上线前阅读）。
 
 ## Quick Run
@@ -26,6 +28,7 @@ cargo run -p common-http-server-rs --example level1_basic
 cargo run -p common-http-server-rs --example level2_app_config
 cargo run -p common-http-server-rs --example level3_security_and_monitoring
 cargo run -p common-http-server-rs --example level4_graceful_shutdown
+cargo run -p common-http-server-rs --example websocket_group_events
 cargo run -p common-http-server-rs --example jwt_with_client --features external-health
 ```
 

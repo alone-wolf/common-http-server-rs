@@ -5,6 +5,7 @@
 - 认证与授权（Basic / API Key / JWT）
 - 防护中间件（DDoS / IP Filter / Rate Limit / Size Limit）
 - 监控与健康检查（Prometheus 指标、性能中间件、健康探针）
+- WebSocket 实时能力（JSON 协议 + group/event + auth）
 - 可选运行时终端 UI（TUI）
 
 ## 快速开始
@@ -23,6 +24,7 @@ cargo run --example level2_app_config
 cargo run --example level3_security_and_monitoring
 cargo run --example level4_graceful_shutdown
 cargo run --example level5_terminal_ui
+cargo run --example websocket_group_events
 cargo run --example jwt_with_client --features external-health
 ```
 
@@ -65,6 +67,7 @@ use common_http_server_rs::{AppBuilder, AppConfig, Server, ServerConfig};
 - `doc/AUTH_GUIDE.md`
 - `doc/PROTECTION_GUIDE.md`
 - `doc/MONITORING_GUIDE.md`
+- `doc/WEBSOCKET_GUIDE.md`
 - `doc/SECURITY_NOTES.md`
 
 ## 给 AI/Agent 的使用说明（重点）

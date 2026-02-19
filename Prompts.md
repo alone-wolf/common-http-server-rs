@@ -100,6 +100,17 @@
 - 修改后给出受影响文件列表
 ```
 
+### F. 接入 WebSocket（group/event + auth）
+
+```text
+请为服务接入 common_http_server_rs 的 WebSocket 能力：
+- 使用 WebSocketHub + websocket_router_with_auth
+- 认证方式使用 WebSocketAuthMode::ApiKey（复用本包 auth）
+- 实现/演示 group join/leave 与 event 广播
+- 通信格式使用 JSON 文本帧
+- 给出最小可运行示例及测试/验证步骤
+```
+
 ## 4) AI 生成代码时的事实清单（可附加到任何提示词后）
 
 ```text
@@ -111,6 +122,7 @@
   - level3_security_and_monitoring.rs
   - level4_graceful_shutdown.rs
   - level5_terminal_ui.rs
+  - websocket_group_events.rs
   - jwt_with_client.rs
 - 文档目录：doc/
 - 默认健康路由由 AppBuilder::new(...) 自动提供：/health、/health/detailed、/api/v1/status
