@@ -1,6 +1,6 @@
 # Protection Features Guide
 
-This guide demonstrates how to use the protection features in the common-http-server package.
+This guide demonstrates how to use the protection features in the common-http-server-rs package.
 For production hardening defaults and audit notes, see `doc/SECURITY_NOTES.md`.
 All docs index: `doc/README.md`.
 
@@ -10,7 +10,7 @@ All docs index: `doc/README.md`.
 Control the frequency of requests from clients.
 
 ```rust
-use common_http_server::protection;
+use common_http_server_rs::protection;
 use std::time::Duration;
 
 // Create rate limiting service
@@ -33,7 +33,7 @@ let app = Router::new()
 Whitelist or blacklist IP addresses and networks.
 
 ```rust
-use common_http_server::protection;
+use common_http_server_rs::protection;
 
 // Create IP filter service
 let ip_filter_service = protection::ip_filter_presets::private_networks()
@@ -53,7 +53,7 @@ let app = Router::new()
 Limit the size of incoming requests.
 
 ```rust
-use common_http_server::protection;
+use common_http_server_rs::protection;
 
 // Create size limit service
 let size_limit_service = protection::size_limit_presets::api()
@@ -73,7 +73,7 @@ let app = Router::new()
 Comprehensive protection against DDoS attacks.
 
 ```rust
-use common_http_server::protection;
+use common_http_server_rs::protection;
 use std::time::Duration;
 
 // Create DDoS protection service (single-module usage)
@@ -98,7 +98,7 @@ let app = Router::new()
 Build and apply all protection layers in one place:
 
 ```rust
-use common_http_server::{AppBuilder, AppConfig, ProtectionStackBuilder, ddos_presets, rate_limit_presets, size_limit_presets};
+use common_http_server_rs::{AppBuilder, AppConfig, ProtectionStackBuilder, ddos_presets, rate_limit_presets, size_limit_presets};
 
 let ddos_config = ddos_presets::moderate();
 let rate_limit_config = rate_limit_presets::api();
@@ -153,7 +153,7 @@ module internals.
 ## Integration Example
 
 ```rust
-use common_http_server::{
+use common_http_server_rs::{
     AppBuilder, AppConfig, ProtectionStackBuilder, ddos_presets, ip_filter_presets,
     rate_limit_presets, size_limit_presets,
 };

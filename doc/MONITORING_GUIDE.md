@@ -1,6 +1,6 @@
 # Monitoring and Metrics Guide
 
-This guide explains how to use the monitoring and metrics functionality in the common-http-server package.
+This guide explains how to use the monitoring and metrics functionality in the common-http-server-rs package.
 For security constraints and deployment advice, see `doc/SECURITY_NOTES.md`.
 All docs index: `doc/README.md`.
 
@@ -16,7 +16,7 @@ All docs index: `doc/README.md`.
 
 ```rust
 use axum::{Router, middleware, routing::get};
-use common_http_server::{
+use common_http_server_rs::{
     monitoring::{
         MonitoringState, metrics_endpoint, monitoring_info_endpoint,
         performance_monitoring_middleware, setup_metrics_recorder,
@@ -98,13 +98,13 @@ Notes:
 - External service checks are capped per request (current cap: 8).
 - External and Redis checks have a timeout (default: 3 seconds).
 - Runtime-supplied health targets are disabled by default.  
-  To explicitly allow them, set `COMMON_HTTP_SERVER_ALLOW_RUNTIME_HEALTH_TARGETS=true`.
+  To explicitly allow them, set `COMMON_HTTP_SERVER_RS_ALLOW_RUNTIME_HEALTH_TARGETS=true`.
 
 ## Configuration
 
 ### Health Check Configuration
 ```rust
-use common_http_server::monitoring::{HealthCheckConfig, enhanced_health_check};
+use common_http_server_rs::monitoring::{HealthCheckConfig, enhanced_health_check};
 
 let config = HealthCheckConfig {
     database_url: Some("postgresql://user:pass@localhost/db".to_string()),
@@ -134,7 +134,7 @@ The monitoring module supports optional features for health checks:
 Enable them in your `Cargo.toml`:
 ```toml
 [dependencies]
-common-http-server = { version = "0.1.0", features = ["full-health"] }
+common-http-server-rs = { version = "0.1.0", features = ["full-health"] }
 ```
 
 ## Custom Metrics
@@ -142,7 +142,7 @@ common-http-server = { version = "0.1.0", features = ["full-health"] }
 You can access the metrics collector directly to add custom metrics:
 
 ```rust
-use common_http_server::monitoring::MetricsCollector;
+use common_http_server_rs::monitoring::MetricsCollector;
 
 let metrics = MetricsCollector::new();
 
@@ -172,7 +172,7 @@ See `examples/level3_security_and_monitoring.rs` for a complete working example 
 
 Run the example:
 ```bash
-cargo run -p common-http-server --example level3_security_and_monitoring
+cargo run -p common-http-server-rs --example level3_security_and_monitoring
 ```
 
 Then visit:

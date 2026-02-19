@@ -291,7 +291,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "common-http-server"
+name = "common-http-server-rs"
 version = "0.1.0"
 dependencies = [
  "axum",

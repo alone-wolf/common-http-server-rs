@@ -154,8 +154,8 @@ pub mod presets {
             ],
             https_policy: HttpsPolicy::Disabled,
             jwt_algorithm: Algorithm::HS256,
-            jwt_issuer: Some("common-http-server-dev".to_string()),
-            jwt_audience: Some("common-http-server-clients".to_string()),
+            jwt_issuer: Some("common-http-server-rs-dev".to_string()),
+            jwt_audience: Some("common-http-server-rs-clients".to_string()),
             jwt_leeway_seconds: 30,
             trusted_proxies: vec![],
         }
@@ -171,8 +171,8 @@ pub mod presets {
             // 生产环境常见 TLS 终止于网关/Nginx，是否强制 HTTPS 由使用方显式配置。
             https_policy: HttpsPolicy::Disabled,
             jwt_algorithm: Algorithm::HS256,
-            jwt_issuer: Some("common-http-server".to_string()),
-            jwt_audience: Some("common-http-server-clients".to_string()),
+            jwt_issuer: Some("common-http-server-rs".to_string()),
+            jwt_audience: Some("common-http-server-rs-clients".to_string()),
             jwt_leeway_seconds: 30,
             trusted_proxies: vec![],
         }

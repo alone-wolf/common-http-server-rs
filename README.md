@@ -1,4 +1,4 @@
-# common-http-server
+# common-http-server-rs
 
 一个基于 Axum 的通用 HTTP 服务骨架，提供可复用的：
 - 服务启动与配置（`ServerConfig` / `AppConfig` / `AppBuilder` / `Server`）
@@ -25,6 +25,30 @@ cargo run --example level4_graceful_shutdown
 cargo run --example level5_terminal_ui
 cargo run --example jwt_with_client --features external-health
 ```
+
+## 通过 Git 引入依赖
+
+在你的项目 `Cargo.toml` 中添加：
+
+```toml
+[dependencies]
+common-http-server-rs = { git = "https://github.com/alone-wolf/common-http-server-rs.git", branch = "main" }
+```
+
+如果你需要启用可选能力（例如完整健康检查），可以这样写：
+
+```toml
+[dependencies]
+common-http-server-rs = { git = "https://github.com/alone-wolf/common-http-server-rs.git", branch = "main", features = ["full-health"] }
+```
+
+然后在代码里这样导入（crate 名会转为下划线）：
+
+```rust
+use common_http_server_rs::{AppBuilder, AppConfig, Server, ServerConfig};
+```
+
+如需锁定版本，建议改用 `tag` 或 `rev`（commit SHA）而不是 `branch`。
 
 ## 项目结构
 

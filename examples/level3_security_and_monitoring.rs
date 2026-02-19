@@ -1,5 +1,5 @@
 use axum::{Json, Router, middleware, routing::get};
-use common_http_server::{
+use common_http_server_rs::{
     AppBuilder, AppConfig, AuthUser, HttpsPolicy, MonitoringState, ProtectionStackBuilder, Server,
     ServerConfig, auth_presets, basic_auth_middleware, ddos_presets, metrics_endpoint,
     monitoring_info_endpoint, performance_monitoring_middleware, rate_limit_presets, require_roles,

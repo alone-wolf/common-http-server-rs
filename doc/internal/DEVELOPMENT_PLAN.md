@@ -4,7 +4,7 @@
 
 ## 项目概述
 
-`common-http-server` 是一个基于 Axum 的通用 HTTP 服务器框架，旨在提供生产就绪的、功能完整的 Web 服务器基础设施。
+`common-http-server-rs` 是一个基于 Axum 的通用 HTTP 服务器框架，旨在提供生产就绪的、功能完整的 Web 服务器基础设施。
 
 ## 核心功能模块
 

@@ -1,6 +1,6 @@
 # Security Notes
 
-This document summarizes the current security baseline of `common-http-server` and recommended production settings.
+This document summarizes the current security baseline of `common-http-server-rs` and recommended production settings.
 
 ## 1) Current Security Baseline
 
@@ -35,7 +35,7 @@ This document summarizes the current security baseline of `common-http-server` a
 - External/Redis health checks now have timeout controls (default 3s).
 - External HTTP checks disable redirects.
 - Runtime-supplied health targets are disabled by default (opt-in via
-  `COMMON_HTTP_SERVER_ALLOW_RUNTIME_HEALTH_TARGETS=true`).
+  `COMMON_HTTP_SERVER_RS_ALLOW_RUNTIME_HEALTH_TARGETS=true`).
 - `disabled` checks no longer force overall unhealthy status.
 
 ### Logging
@@ -58,7 +58,7 @@ This document summarizes the current security baseline of `common-http-server` a
 ## 3) Minimal Secure Setup Example
 
 ```rust
-use common_http_server::{
+use common_http_server_rs::{
     AppBuilder, AppConfig, HttpsPolicy, ProtectionStackBuilder,
     Server, ServerConfig, auth_presets, ddos_presets, rate_limit_presets, size_limit_presets,
 };

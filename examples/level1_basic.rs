@@ -1,5 +1,5 @@
 use axum::{Json, routing::get};
-use common_http_server::{AppBuilder, AppConfig, Server, ServerConfig};
+use common_http_server_rs::{AppBuilder, AppConfig, Server, ServerConfig};
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]

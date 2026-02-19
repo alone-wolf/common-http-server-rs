@@ -65,7 +65,7 @@ impl Default for LoggingConfig {
             include_thread_ids: false,
             include_source_location: false,
             enable_json_backend: true,
-            json_backend_path: "logs/common-http-server.jsonl".to_string(),
+            json_backend_path: "logs/common-http-server-rs.jsonl".to_string(),
         }
     }
 }

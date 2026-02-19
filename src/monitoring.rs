@@ -31,7 +31,9 @@ const EXTERNAL_HEALTH_CHECK_TIMEOUT: Duration = Duration::from_secs(3);
 const EXTERNAL_HEALTH_DNS_TIMEOUT: Duration = Duration::from_secs(2);
 #[cfg(feature = "database-health")]
 const HEALTH_DB_QUERY_TIMEOUT: Duration = Duration::from_secs(3);
-const ALLOW_RUNTIME_HEALTH_TARGETS_ENV: &str = "COMMON_HTTP_SERVER_ALLOW_RUNTIME_HEALTH_TARGETS";
+const ALLOW_RUNTIME_HEALTH_TARGETS_ENV: &str = "COMMON_HTTP_SERVER_RS_ALLOW_RUNTIME_HEALTH_TARGETS";
+const ALLOW_RUNTIME_HEALTH_TARGETS_ENV_LEGACY: &str =
+    "COMMON_HTTP_SERVER_ALLOW_RUNTIME_HEALTH_TARGETS";
 
 #[derive(Debug, Clone)]
 pub struct MetricsCollector {
@@ -608,8 +610,12 @@ fn overall_checks_healthy(checks: &HashMap<String, HealthCheckResult>) -> bool {
 }
 
 fn runtime_health_targets_allowed() -> bool {
+    let parse_bool =
+        |value: String| matches!(value.to_ascii_lowercase().as_str(), "1" | "true" | "yes");
+
     std::env::var(ALLOW_RUNTIME_HEALTH_TARGETS_ENV)
-        .map(|value| matches!(value.to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
+        .map(parse_bool)
+        .or_else(|_| std::env::var(ALLOW_RUNTIME_HEALTH_TARGETS_ENV_LEGACY).map(parse_bool))
         .unwrap_or(false)
 }
 

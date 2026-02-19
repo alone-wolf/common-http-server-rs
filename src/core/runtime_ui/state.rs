@@ -156,7 +156,7 @@ pub struct AboutInfo {
 impl Default for AboutInfo {
     fn default() -> Self {
         Self {
-            app_name: "common-http-server".to_string(),
+            app_name: "common-http-server-rs".to_string(),
             version: env!("CARGO_PKG_VERSION").to_string(),
             developer: "unknown".to_string(),
             build_time: "unknown".to_string(),

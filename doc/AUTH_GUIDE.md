@@ -20,16 +20,16 @@
 ### 1. 配置认证
 
 ```rust
-use common_http_server::auth::{auth_presets, BasicUser, SharedAuthConfig};
+use common_http_server_rs::auth::{auth_presets, BasicUser, SharedAuthConfig};
 use jsonwebtoken::Algorithm;
-use common_http_server::HttpsPolicy;
+use common_http_server_rs::HttpsPolicy;
 use ipnet::IpNet;
 
 // 使用预定义的开发环境配置
 let auth_config: SharedAuthConfig = auth_presets::development().shared();
 
 // 或者自定义配置（推荐用 builder，避免字段变更导致示例过期）
-let mut auth_config = common_http_server::auth::AuthConfig::default()
+let mut auth_config = common_http_server_rs::auth::AuthConfig::default()
     .with_jwt_secret("replace-with-at-least-32-char-random-secret")
     .with_jwt_algorithm(Algorithm::HS256)
     .with_jwt_issuer("your-service")
@@ -48,7 +48,7 @@ let auth_config = auth_config.shared();
 ### 1.1 生产环境最小安全配置（推荐）
 
 ```rust
-use common_http_server::{AppBuilder, AppConfig, AuthConfig, HttpsPolicy, Server, ServerConfig};
+use common_http_server_rs::{AppBuilder, AppConfig, AuthConfig, HttpsPolicy, Server, ServerConfig};
 use ipnet::IpNet;
 
 let jwt_secret = std::env::var("JWT_SECRET")
@@ -72,7 +72,7 @@ let server = Server::new(ServerConfig::new(3000), app_builder);
 
 ```rust
 use axum::{middleware, Router};
-use common_http_server::auth::{
+use common_http_server_rs::auth::{
     auth_presets, basic_auth_middleware, api_key_auth_middleware, jwt_auth_middleware
 };
 
@@ -102,7 +102,7 @@ let app = Router::new()
 ### 3. 角色和权限控制
 
 ```rust
-use common_http_server::auth::{require_roles, require_permissions};
+use common_http_server_rs::auth::{require_roles, require_permissions};
 
 // 需要管理员角色的路由
 let admin_routes = Router::new()
@@ -150,7 +150,7 @@ curl -H "Authorization: Bearer YOUR_JWT_TOKEN" \
 ### 获取当前用户信息
 
 ```rust
-use common_http_server::auth::get_auth_user;
+use common_http_server_rs::auth::get_auth_user;
 use axum::extract::Request;
 
 async fn user_info(request: Request) -> Result<Json<ApiResponse<User>>, AuthError> {
@@ -162,7 +162,7 @@ async fn user_info(request: Request) -> Result<Json<ApiResponse<User>>, AuthErro
 ### 检查用户角色和权限
 
 ```rust
-use common_http_server::auth::{user_has_role, user_has_permission};
+use common_http_server_rs::auth::{user_has_role, user_has_permission};
 
 async fn check_permissions(request: Request) -> &'static str {
     if user_has_role(&request, "admin") {
@@ -178,7 +178,7 @@ async fn check_permissions(request: Request) -> &'static str {
 ### JWT 工具函数
 
 ```rust
-use common_http_server::auth::{auth_presets, JwtUtils, User};
+use common_http_server_rs::auth::{auth_presets, JwtUtils, User};
 
 let auth_config = auth_presets::development();
 
@@ -241,10 +241,10 @@ let claims = JwtUtils::verify_token(&token, &auth_config)?;
 运行示例代码：
 ```bash
 # JWT + 客户端交互示例
-cargo run -p common-http-server --example jwt_with_client --features external-health
+cargo run -p common-http-server-rs --example jwt_with_client --features external-health
 
 # 认证 + 保护 + 监控组合示例
-cargo run -p common-http-server --example level3_security_and_monitoring
+cargo run -p common-http-server-rs --example level3_security_and_monitoring
 ```
 
 示例包含：

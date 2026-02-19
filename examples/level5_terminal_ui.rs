@@ -1,5 +1,5 @@
 use axum::{Json, Router, middleware, routing::get};
-use common_http_server::{
+use common_http_server_rs::{
     AboutInfo, ActionKind, AppBuilder, AppConfig, LogEntry, LogLevel, MonitoringState,
     RuntimeUiConfig, RuntimeUiServiceConfig, Server, ServerConfig,
     performance_monitoring_middleware, setup_metrics_recorder, start_terminal_ui_with_monitoring,
@@ -33,10 +33,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .with_ui_config(
                     RuntimeUiConfig::default()
                         .enabled(true)
-                        .title("common-http-server terminal ui"),
+                        .title("common-http-server-rs terminal ui"),
                 )
                 .with_about(AboutInfo {
-                    app_name: "common-http-server".to_string(),
+                    app_name: "common-http-server-rs".to_string(),
                     version: env!("CARGO_PKG_VERSION").to_string(),
                     developer: "team".to_string(),
                     build_time: option_env!("BUILD_TIME").unwrap_or("dev-build").to_string(),

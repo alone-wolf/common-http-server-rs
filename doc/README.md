@@ -1,6 +1,6 @@
 # Documentation Index
 
-`common-http-server` 文档入口与推荐阅读顺序：
+`common-http-server-rs` 文档入口与推荐阅读顺序：
 
 1. `SAMPLES.md`  
    先看可运行示例，快速了解能力边界。
@@ -19,17 +19,18 @@
 
 ```bash
 # 基础运行
-cargo run -p common-http-server
+cargo run -p common-http-server-rs
 
 # 示例
-cargo run -p common-http-server --example level1_basic
-cargo run -p common-http-server --example level2_app_config
-cargo run -p common-http-server --example level3_security_and_monitoring
-cargo run -p common-http-server --example level4_graceful_shutdown
-cargo run -p common-http-server --example jwt_with_client --features external-health
+cargo run -p common-http-server-rs --example level1_basic
+cargo run -p common-http-server-rs --example level2_app_config
+cargo run -p common-http-server-rs --example level3_security_and_monitoring
+cargo run -p common-http-server-rs --example level4_graceful_shutdown
+cargo run -p common-http-server-rs --example jwt_with_client --features external-health
 ```
 
 ## Notes
 
 - 文档中的端口、路由以示例代码为准；如果示例更新，请同步更新文档。
-- `repair.md` 是历史修复记录，不代表当前代码状态。
+- `internal/repair.md` 是历史修复记录，不代表当前代码状态。
+- `internal/DEVELOPMENT_PLAN.md` 是内部开发计划，不作为依赖使用指南。

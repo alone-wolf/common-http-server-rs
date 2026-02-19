@@ -2,7 +2,7 @@
 fn main() {
     eprintln!(
         "This sample needs the optional reqwest client.\nRun with:\n\
-         cargo run -p common-http-server --example jwt_with_client --features external-health"
+         cargo run -p common-http-server-rs --example jwt_with_client --features external-health"
     );
 }
 
@@ -15,8 +15,8 @@ mod enabled {
         middleware,
         routing::{get, post},
     };
-    use common_http_server::auth::User;
-    use common_http_server::{
+    use common_http_server_rs::auth::User;
+    use common_http_server_rs::{
         AuthConfig, AuthUser, BasicUser, JwtUtils, SharedAuthConfig, jwt_auth_middleware,
     };
     use serde::{Deserialize, Serialize};

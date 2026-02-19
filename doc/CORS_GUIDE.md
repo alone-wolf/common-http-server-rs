@@ -9,7 +9,7 @@
 ### 基本使用
 
 ```rust
-use common_http_server::{AppBuilder, AppConfig, CorsConfig, Server, ServerConfig};
+use common_http_server_rs::{AppBuilder, AppConfig, CorsConfig, Server, ServerConfig};
 
 let cors_config = CorsConfig::new()
     .allowed_origins(vec!["http://localhost:3000"])
@@ -74,7 +74,7 @@ server.start().await?;
 
 ### 1. 开发环境
 ```rust
-use common_http_server::presets;
+use common_http_server_rs::presets;
 
 let cors_config = presets::development();
 ```
@@ -188,8 +188,8 @@ curl -v \
 查看 `src/main.rs` 了解当前 CORS 配置示例（包含 `CorsConfig` 的链式配置）：
 
 ```bash
-# 运行 common-http-server 内置示例应用
-cargo run -p common-http-server
+# 运行 common-http-server-rs 内置示例应用
+cargo run -p common-http-server-rs
 ```
 
 ## 🔍 调试 CORS
@@ -197,7 +197,7 @@ cargo run -p common-http-server
 启用日志记录来调试 CORS 问题：
 
 ```bash
-RUST_LOG=debug cargo run -p common-http-server
+RUST_LOG=debug cargo run -p common-http-server-rs
 ```
 
 日志会显示：

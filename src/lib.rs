@@ -1,4 +1,4 @@
-//! `common-http-server` provides a reusable Axum-based HTTP server scaffold.
+//! `common-http-server-rs` provides a reusable Axum-based HTTP server scaffold.
 //!
 //! It focuses on four areas:
 //! - core bootstrap (`Server`, `ServerConfig`, `AppBuilder`, `AppConfig`)

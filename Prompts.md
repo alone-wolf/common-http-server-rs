@@ -8,7 +8,7 @@
 你是本仓库的 Rust 代码助手。请严格基于当前代码实现，不要臆造 API。
 
 仓库关键信息：
-- 单 crate 项目，包名与库名为 common-http-server（代码中导入路径是 common_http_server）
+- 单 crate 项目，包名与库名为 common-http-server-rs（代码中导入路径是 common_http_server_rs）
 - 核心启动链路：AppBuilder -> Server::new(...) -> Server::start()
 - 核心配置：ServerConfig, AppConfig, CorsConfig, LoggingConfig
 - 认证模块：AuthConfig / basic_auth_middleware / api_key_auth_middleware / jwt_auth_middleware / require_roles / require_permissions
@@ -16,7 +16,7 @@
 - 监控模块：MonitoringState / setup_metrics_recorder / performance_monitoring_middleware / metrics_endpoint / monitoring_info_endpoint
 
 编码规则：
-1. 只使用仓库内已存在的公开 API（优先从 common_http_server 顶层 re-export 导入）。
+1. 只使用仓库内已存在的公开 API（优先从 common_http_server_rs 顶层 re-export 导入）。
 2. 代码必须可直接编译；补齐必要 use、错误处理与 trait 约束。
 3. 优先沿用现有风格：tokio 多线程 runtime、axum Router、builder 链式配置。
 4. 不引入无关依赖，不改动无关文件。
@@ -31,7 +31,7 @@
 ## 2) 推荐任务提示词模板（User Prompt Template）
 
 ```text
-请在本仓库中完成以下任务，并严格使用 common_http_server 现有 API：
+请在本仓库中完成以下任务，并严格使用 common_http_server_rs 现有 API：
 
 任务：<在这里写需求>
 
@@ -50,7 +50,7 @@
 ### A. 生成最小可运行服务
 
 ```text
-请基于 common_http_server 生成一个最小可运行 HTTP 服务：
+请基于 common_http_server_rs 生成一个最小可运行 HTTP 服务：
 - 使用 ServerConfig + AppConfig + AppBuilder + Server
 - 新增 GET /hello 返回 JSON
 - 保留默认健康检查路由
@@ -61,7 +61,7 @@
 ### B. 接入认证（Basic/JWT）
 
 ```text
-请在现有 axum 路由中接入 common_http_server 认证：
+请在现有 axum 路由中接入 common_http_server_rs 认证：
 - 使用 AuthConfig 构建共享配置（shared）
 - 演示 basic_auth_middleware 或 jwt_auth_middleware
 - 在受保护路由上增加 require_roles(["admin", "user"])
@@ -83,7 +83,7 @@
 ### D. 接入监控与指标
 
 ```text
-请为服务接入 common_http_server 监控能力：
+请为服务接入 common_http_server_rs 监控能力：
 - 创建 MonitoringState 并 setup_metrics_recorder
 - 对业务路由添加 performance_monitoring_middleware
 - 暴露 /monitor/metrics 与 /monitor/monitoring
@@ -104,7 +104,7 @@
 
 ```text
 事实清单：
-- 库入口：src/lib.rs（大量 API 已 re-export，可直接从 common_http_server 导入）
+- 库入口：src/lib.rs（大量 API 已 re-export，可直接从 common_http_server_rs 导入）
 - 示例目录：examples/
   - level1_basic.rs
   - level2_app_config.rs

@@ -1,5 +1,5 @@
 use axum::{Json, routing::get};
-use common_http_server::{
+use common_http_server_rs::{
     AppBuilder, AppConfig, CorsConfig, LogFormat, LoggingConfig, Server, ServerConfig,
 };
 use serde::Serialize;
@@ -12,7 +12,7 @@ struct StatusPayload {
 
 async fn status() -> Json<StatusPayload> {
     Json(StatusPayload {
-        service: "common-http-server",
+        service: "common-http-server-rs",
         version: "level2",
     })
 }

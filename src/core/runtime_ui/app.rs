@@ -40,7 +40,7 @@ impl Default for RuntimeUiConfig {
     fn default() -> Self {
         Self {
             enabled: false,
-            title: "common-http-server".to_string(),
+            title: "common-http-server-rs".to_string(),
             tick_rate: Duration::from_millis(500),
             max_log_entries: 1000,
             update_channel_capacity: 1024,

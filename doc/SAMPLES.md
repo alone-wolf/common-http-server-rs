@@ -18,14 +18,14 @@
 ## Run
 
 ```bash
-cargo run -p common-http-server --example level1_basic
-cargo run -p common-http-server --example level2_app_config
-cargo run -p common-http-server --example level3_security_and_monitoring
-cargo run -p common-http-server --example level4_graceful_shutdown
-cargo run -p common-http-server --example level5_terminal_ui
+cargo run -p common-http-server-rs --example level1_basic
+cargo run -p common-http-server-rs --example level2_app_config
+cargo run -p common-http-server-rs --example level3_security_and_monitoring
+cargo run -p common-http-server-rs --example level4_graceful_shutdown
+cargo run -p common-http-server-rs --example level5_terminal_ui
 
 # jwt_with_client 依赖 reqwest（通过 external-health feature 启用）
-cargo run -p common-http-server --example jwt_with_client --features external-health
+cargo run -p common-http-server-rs --example jwt_with_client --features external-health
 ```
 
 更多文档入口见 `doc/README.md`。
