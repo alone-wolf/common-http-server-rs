@@ -4,7 +4,7 @@
 > 请优先参考 `doc/SECURITY_NOTES.md`、各模块指南与最新测试结果。
 
 ## Overview
-分析 `/Users/wolf/RustroverProjects/some-snippets1/common-http-server/src` 下的代码，发现以下需要修复的问题。
+分析当前仓库 `src/` 下的代码，发现以下需要修复的问题。
 
 ---
 
