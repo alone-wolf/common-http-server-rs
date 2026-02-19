@@ -10,6 +10,12 @@ documentation = "https://docs.rs/common-http-server-rs"
 license = "MIT"
 keywords = ["axum", "http", "server", "websocket", "middleware"]
 categories = ["web-programming::http-server", "network-programming"]
+exclude = [
+    "doc/internal/**",
+    "Prompts.md",
+    "logs/**",
+    ".idea/**",
+]
 
 [dependencies]
 axum = { version = "0.8.8", features = ["ws"] }
