@@ -122,29 +122,33 @@ let write_routes = Router::new()
 ### Basic 认证
 
 ```bash
+# 请先替换为你的服务地址（示例：http://localhost:3000）
+BASE_URL="http://localhost:<port>"
+
 # 使用 curl 测试
 curl -H "Authorization: Basic YWRtaW46YWRtaW4xMjM=" \
-     http://localhost:8080/basic/protected
+     "$BASE_URL/basic/protected"
 ```
 
 ### API Key 认证
 
 ```bash
 curl -H "Authorization: Bearer your-api-key" \
-     http://localhost:8080/api-key/protected
+     "$BASE_URL/api-key/protected"
 ```
 
 ### JWT 认证
 
 ```bash
-# 先登录获取 token（示例与 jwt_with_client 对齐）
+# 先登录获取 token
+# 注意：jwt_with_client 示例会使用随机端口，请以运行日志里的地址为准并替换 BASE_URL
 curl -X POST -H "Content-Type: application/json" \
      -d '{"username":"demo","password":"demo123"}' \
-     http://127.0.0.1:3000/auth/login
+     "$BASE_URL/auth/login"
 
 # 使用 token 访问受保护的资源
 curl -H "Authorization: Bearer YOUR_JWT_TOKEN" \
-     http://127.0.0.1:3000/api/me
+     "$BASE_URL/api/me"
 ```
 
 ## 高级功能
