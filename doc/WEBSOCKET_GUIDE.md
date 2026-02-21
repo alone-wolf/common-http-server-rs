@@ -9,7 +9,7 @@
 ## Feature 划分
 
 - `server`：提供 Axum WebSocket 服务端能力（hub、group/event、auth 集成）
-- `client`：提供异步 JSON WebSocket 客户端封装
+- `client`：提供异步 WebSocket 客户端封装（text JSON + binary MessagePack）
 - `full`：同时启用 `server + client`
 
 依赖示例：
@@ -43,6 +43,7 @@ use websocket::WebSocketClient;
 
 let mut client = WebSocketClient::builder("ws://127.0.0.1:3006/realtime/ws")
     .with_api_key_auth("dev-api-key-1")
+    .with_binary_messagepack()
     .connect()
     .await?;
 ```
@@ -122,7 +123,9 @@ let mut client = WebSocketClient::builder("ws://127.0.0.1:3006/realtime/ws")
 
 ## 约束（当前阶段）
 
-- 仅支持文本帧（JSON），二进制帧会返回 `unsupported_frame` 错误。
+- 协议支持两种帧格式：
+  - 文本帧：JSON
+  - 二进制帧：MessagePack（结构化消息）
 - 出站消息队列为有界队列；当目标连接队列已满时，事件会被拒绝并返回 `outbound_queue_full`。
 - `group` 和 `event` 名称限制：
   - 非空

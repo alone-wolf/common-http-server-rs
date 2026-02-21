@@ -5,6 +5,7 @@ use axum::{
         State,
         ws::{Message, WebSocket, WebSocketUpgrade},
     },
+    http::{HeaderMap, header::SEC_WEBSOCKET_PROTOCOL},
     middleware,
     response::IntoResponse,
     routing::get,
@@ -18,10 +19,26 @@ use futures_util::{SinkExt, StreamExt};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU8, Ordering};
 use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::{RwLock, mpsc};
 use tracing::{debug, info, warn};
 use uuid::Uuid;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WebSocketFrameFormat {
+    TextJson = 0,
+    BinaryMessagePack = 1,
+}
+
+impl WebSocketFrameFormat {
+    fn from_u8(value: u8) -> Self {
+        match value {
+            1 => WebSocketFrameFormat::BinaryMessagePack,
+            _ => WebSocketFrameFormat::TextJson,
+        }
+    }
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum WebSocketError {
@@ -379,8 +396,12 @@ fn validate_event_name(event: &str) -> Result<(), WebSocketError> {
 pub async fn websocket_handler(
     ws: WebSocketUpgrade,
     State((hub, auth_mode)): State<(WebSocketHub, WebSocketAuthMode)>,
+    headers: HeaderMap,
     auth_user: Option<Extension<AuthUser>>,
 ) -> axum::response::Response {
+    let initial_frame_format = detect_initial_frame_format(&headers);
+    let ws = ws.protocols(["msgpack", "json"]);
+
     let auth_user = match (auth_mode, auth_user) {
         (WebSocketAuthMode::None, Some(Extension(auth_user))) => Some(auth_user),
         (WebSocketAuthMode::None, None) => None,
@@ -388,7 +409,7 @@ pub async fn websocket_handler(
         (_, None) => return AuthError::MissingAuthHeader.into_response(),
     };
 
-    ws.on_upgrade(move |socket| websocket_session(socket, hub, auth_user))
+    ws.on_upgrade(move |socket| websocket_session(socket, hub, auth_user, initial_frame_format))
         .into_response()
 }
 
@@ -425,23 +446,45 @@ pub fn websocket_router_with_auth(
     }
 }
 
-async fn websocket_session(socket: WebSocket, hub: WebSocketHub, auth_user: Option<AuthUser>) {
+async fn websocket_session(
+    socket: WebSocket,
+    hub: WebSocketHub,
+    auth_user: Option<AuthUser>,
+    initial_frame_format: WebSocketFrameFormat,
+) {
     let (connection_id, mut rx) = hub.register(auth_user).await;
     info!(connection_id = %connection_id, "websocket connected");
 
     let (mut sender, mut receiver) = socket.split();
+    let frame_format = Arc::new(AtomicU8::new(initial_frame_format as u8));
+    let forward_frame_format = frame_format.clone();
 
     let forward_task = tokio::spawn(async move {
         while let Some(message) = rx.recv().await {
-            match serde_json::to_string(&message) {
-                Ok(payload) => {
-                    if sender.send(Message::Text(payload.into())).await.is_err() {
-                        break;
+            let format =
+                WebSocketFrameFormat::from_u8(forward_frame_format.load(Ordering::Relaxed));
+
+            let frame = match format {
+                WebSocketFrameFormat::TextJson => match serde_json::to_string(&message) {
+                    Ok(payload) => Message::Text(payload.into()),
+                    Err(err) => {
+                        warn!(error = %err, "failed to serialize websocket JSON message");
+                        continue;
+                    }
+                },
+                WebSocketFrameFormat::BinaryMessagePack => {
+                    match rmp_serde::to_vec_named(&message) {
+                        Ok(payload) => Message::Binary(payload.into()),
+                        Err(err) => {
+                            warn!(error = %err, "failed to serialize websocket MessagePack message");
+                            continue;
+                        }
                     }
                 }
-                Err(err) => {
-                    warn!(error = %err, "failed to serialize websocket message");
-                }
+            };
+
+            if sender.send(frame).await.is_err() {
+                break;
             }
         }
     });
@@ -449,16 +492,15 @@ async fn websocket_session(socket: WebSocket, hub: WebSocketHub, auth_user: Opti
     while let Some(frame_result) = receiver.next().await {
         match frame_result {
             Ok(Message::Text(text)) => {
-                process_client_text_message(&hub, &connection_id, &text).await;
+                frame_format.store(WebSocketFrameFormat::TextJson as u8, Ordering::Relaxed);
+                process_client_text_frame(&hub, &connection_id, &text).await;
             }
-            Ok(Message::Binary(_)) => {
-                send_ws_error(
-                    &hub,
-                    &connection_id,
-                    "unsupported_frame",
-                    "Binary frames are not supported in current JSON protocol",
-                )
-                .await;
+            Ok(Message::Binary(payload)) => {
+                frame_format.store(
+                    WebSocketFrameFormat::BinaryMessagePack as u8,
+                    Ordering::Relaxed,
+                );
+                process_client_binary_frame(&hub, &connection_id, &payload).await;
             }
             Ok(Message::Ping(_)) | Ok(Message::Pong(_)) => {}
             Ok(Message::Close(_)) => {
@@ -477,7 +519,26 @@ async fn websocket_session(socket: WebSocket, hub: WebSocketHub, auth_user: Opti
     info!(connection_id = %connection_id, "websocket disconnected");
 }
 
-async fn process_client_text_message(hub: &WebSocketHub, connection_id: &str, text: &str) {
+fn detect_initial_frame_format(headers: &HeaderMap) -> WebSocketFrameFormat {
+    let Some(raw) = headers
+        .get(SEC_WEBSOCKET_PROTOCOL)
+        .and_then(|value| value.to_str().ok())
+    else {
+        return WebSocketFrameFormat::TextJson;
+    };
+
+    let supports_msgpack = raw.split(',').map(str::trim).any(|token| {
+        token.eq_ignore_ascii_case("msgpack") || token.eq_ignore_ascii_case("messagepack")
+    });
+
+    if supports_msgpack {
+        WebSocketFrameFormat::BinaryMessagePack
+    } else {
+        WebSocketFrameFormat::TextJson
+    }
+}
+
+async fn process_client_text_frame(hub: &WebSocketHub, connection_id: &str, text: &str) {
     let message = match serde_json::from_str::<ClientMessage>(text) {
         Ok(message) => message,
         Err(err) => {
@@ -492,6 +553,28 @@ async fn process_client_text_message(hub: &WebSocketHub, connection_id: &str, te
         }
     };
 
+    process_client_message(hub, connection_id, message).await;
+}
+
+async fn process_client_binary_frame(hub: &WebSocketHub, connection_id: &str, payload: &[u8]) {
+    let message = match rmp_serde::from_slice::<ClientMessage>(payload) {
+        Ok(message) => message,
+        Err(err) => {
+            send_ws_error(
+                hub,
+                connection_id,
+                "invalid_binary",
+                &format!("Failed to parse MessagePack frame: {}", err),
+            )
+            .await;
+            return;
+        }
+    };
+
+    process_client_message(hub, connection_id, message).await;
+}
+
+async fn process_client_message(hub: &WebSocketHub, connection_id: &str, message: ClientMessage) {
     match message {
         ClientMessage::Join { group } => match hub.join_group(connection_id, &group).await {
             Ok(_) => {
@@ -563,6 +646,7 @@ async fn send_ws_error(hub: &WebSocketHub, connection_id: &str, code: &str, mess
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::http::{HeaderMap, HeaderValue, header::SEC_WEBSOCKET_PROTOCOL};
     use common_http_server_rs::AuthType;
     use common_http_server_rs::auth::types::User;
 
@@ -720,6 +804,36 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(error, WebSocketError::InvalidEvent));
+    }
+
+    #[test]
+    fn detect_msgpack_subprotocol_as_binary_format() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            SEC_WEBSOCKET_PROTOCOL,
+            HeaderValue::from_static("json,msgpack"),
+        );
+
+        assert_eq!(
+            detect_initial_frame_format(&headers),
+            WebSocketFrameFormat::BinaryMessagePack
+        );
+    }
+
+    #[tokio::test]
+    async fn process_client_binary_frame_supports_messagepack_messages() {
+        let hub = WebSocketHub::new();
+        let (connection_id, mut rx) = hub.register(Some(auth_user("alice"))).await;
+        let _ = rx.recv().await;
+
+        let join_payload = rmp_serde::to_vec_named(&ClientMessage::Join {
+            group: "binary.room".to_string(),
+        })
+        .expect("messagepack payload should encode");
+        process_client_binary_frame(&hub, &connection_id, &join_payload).await;
+
+        let ack = rx.recv().await.expect("joined ack should arrive");
+        assert!(matches!(ack, ServerMessage::Joined { group } if group == "binary.room"));
     }
 
     #[tokio::test]

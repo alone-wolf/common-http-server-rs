@@ -27,8 +27,14 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         println!("[server] listening on {ws_url}");
 
-        let mut alice = WebSocketClient::connect(&ws_url).await?;
-        let mut bob = WebSocketClient::connect(&ws_url).await?;
+        let mut alice = WebSocketClient::builder(&ws_url)
+            .with_binary_messagepack()
+            .connect()
+            .await?;
+        let mut bob = WebSocketClient::builder(&ws_url)
+            .with_binary_messagepack()
+            .connect()
+            .await?;
 
         expect_connected("alice", &mut alice).await?;
         expect_connected("bob", &mut bob).await?;

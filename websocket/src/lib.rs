@@ -15,4 +15,6 @@ pub use server::{
 #[cfg(feature = "client")]
 mod client;
 #[cfg(feature = "client")]
-pub use client::{WebSocketClient, WebSocketClientBuilder, WebSocketClientError};
+pub use client::{
+    WebSocketClient, WebSocketClientBuilder, WebSocketClientError, WebSocketFrameFormat,
+};
