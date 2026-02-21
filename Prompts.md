@@ -8,7 +8,9 @@
 你是本仓库的 Rust 代码助手。请严格基于当前代码实现，不要臆造 API。
 
 仓库关键信息：
-- 单 crate 项目，包名与库名为 common-http-server-rs（代码中导入路径是 common_http_server_rs）
+- workspace 项目：
+  - 核心 crate：common-http-server-rs（导入路径 common_http_server_rs）
+  - WebSocket crate：websocket（导入路径 websocket）
 - 核心启动链路：AppBuilder -> Server::new(...) -> Server::start()
 - 核心配置：ServerConfig, AppConfig, CorsConfig, LoggingConfig
 - 认证模块：AuthConfig / basic_auth_middleware / api_key_auth_middleware / jwt_auth_middleware / require_roles / require_permissions
@@ -31,7 +33,7 @@
 ## 2) 推荐任务提示词模板（User Prompt Template）
 
 ```text
-请在本仓库中完成以下任务，并严格使用 common_http_server_rs 现有 API：
+请在本仓库中完成以下任务，并严格使用对应 crate 的现有 API：
 
 任务：<在这里写需求>
 
@@ -94,7 +96,7 @@
 
 ```text
 请检查并更新仓库文档，要求：
-- 命令以单 crate 形式书写（优先 cargo run --example ...）
+- 命令按所属 crate 书写（例如 `cargo run -p <package> --example ...`）
 - 避免写入本机绝对路径
 - 若发现历史快照内容，标注“可能过时”并给出最新参考文档
 - 修改后给出受影响文件列表
@@ -103,9 +105,9 @@
 ### F. 接入 WebSocket（group/event + auth）
 
 ```text
-请为服务接入 common_http_server_rs 的 WebSocket 能力：
-- 使用 WebSocketHub + websocket_router_with_auth
-- 认证方式使用 WebSocketAuthMode::ApiKey（复用本包 auth）
+请为服务接入 websocket 的 WebSocket 能力：
+- 使用 WebSocketHub + websocket_router_with_auth（来自 websocket）
+- 认证方式使用 WebSocketAuthMode::ApiKey（并复用 common_http_server_rs 的 auth）
 - 实现/演示 group join/leave 与 event 广播
 - 通信格式使用 JSON 文本帧
 - 给出最小可运行示例及测试/验证步骤
@@ -116,14 +118,15 @@
 ```text
 事实清单：
 - 库入口：src/lib.rs（大量 API 已 re-export，可直接从 common_http_server_rs 导入）
-- 示例目录：examples/
+- 核心示例目录：examples/
   - level1_basic.rs
   - level2_app_config.rs
   - level3_security_and_monitoring.rs
   - level4_graceful_shutdown.rs
   - level5_terminal_ui.rs
-  - websocket_group_events.rs
   - jwt_with_client.rs
+- WebSocket 示例目录：websocket/examples/
+  - websocket_group_events.rs
 - 文档目录：doc/
 - 默认健康路由由 AppBuilder::new(...) 自动提供：/health、/health/detailed、/api/v1/status
 ```

@@ -2,23 +2,28 @@
 name = "common-http-server-rs"
 version = "0.1.0"
 edition = "2024"
-description = "Reusable Axum-based HTTP server scaffold with auth, protection, monitoring, and websocket support"
+description = "Reusable Axum-based HTTP server scaffold with auth, protection, and monitoring"
 readme = "README.md"
 repository = "https://github.com/alone-wolf/common-http-server-rs"
 homepage = "https://github.com/alone-wolf/common-http-server-rs"
 documentation = "https://docs.rs/common-http-server-rs"
 license = "MIT"
-keywords = ["axum", "http", "server", "websocket", "middleware"]
+keywords = ["axum", "http", "server", "middleware", "rust"]
 categories = ["web-programming::http-server", "network-programming"]
 exclude = [
     "doc/internal/**",
     "Prompts.md",
     "logs/**",
     ".idea/**",
+    "websocket/**",
 ]
 
+[workspace]
+members = [".", "websocket"]
+resolver = "2"
+
 [dependencies]
-axum = { version = "0.8.8", features = ["ws"] }
+axum = "0.8.8"
 http = "1.4.0"
 serde = { version = "1.0.228", features = ["derive"] }
 tower = "0.5.3"

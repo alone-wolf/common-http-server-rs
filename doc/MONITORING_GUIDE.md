@@ -134,7 +134,7 @@ The monitoring module supports optional features for health checks:
 Enable them in your `Cargo.toml`:
 ```toml
 [dependencies]
-common-http-server-rs = { version = "0.1.0", features = ["full-health"] }
+common-http-server-rs = { git = "https://github.com/alone-wolf/common-http-server-rs.git", branch = "main", features = ["full-health"] }
 ```
 
 ## Custom Metrics

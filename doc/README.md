@@ -28,12 +28,16 @@ cargo run -p common-http-server-rs --example level1_basic
 cargo run -p common-http-server-rs --example level2_app_config
 cargo run -p common-http-server-rs --example level3_security_and_monitoring
 cargo run -p common-http-server-rs --example level4_graceful_shutdown
-cargo run -p common-http-server-rs --example websocket_group_events
+cargo run -p common-http-server-rs --example level5_terminal_ui
 cargo run -p common-http-server-rs --example jwt_with_client --features external-health
+
+# WebSocket 示例（workspace 子 crate）
+cargo run -p websocket --example websocket_group_events
 ```
 
 ## Notes
 
 - 文档中的端口、路由以示例代码为准；如果示例更新，请同步更新文档。
+- WebSocket 相关代码位于 workspace 子 crate `websocket`。
 - `internal/repair.md` 是历史修复记录，不代表当前代码状态。
 - `internal/DEVELOPMENT_PLAN.md` 是内部开发计划，不作为依赖使用指南。

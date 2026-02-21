@@ -1,8 +1,6 @@
 use axum::Router;
-use common_http_server_rs::{
-    AppBuilder, AppConfig, Server, ServerConfig, WebSocketAuthMode, WebSocketHub, auth_presets,
-    websocket_router_with_auth,
-};
+use common_http_server_rs::{AppBuilder, AppConfig, Server, ServerConfig, auth_presets};
+use websocket::{WebSocketAuthMode, WebSocketHub, websocket_router_with_auth};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let runtime = tokio::runtime::Builder::new_multi_thread()

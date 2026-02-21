@@ -5,13 +5,11 @@
 //! - authentication middleware (Basic/API Key/JWT)
 //! - protection middleware (rate limit/IP filter/body limit/DDoS)
 //! - monitoring (Prometheus metrics and health checks)
-//! - websocket realtime messaging (JSON group/event protocol with auth)
 
 pub mod auth;
 pub mod core;
 pub mod monitoring;
 pub mod protection;
-pub mod websocket;
 
 // Re-export core modules
 pub use core::{
@@ -58,13 +56,6 @@ pub use monitoring::{
     MonitoringState, RequestStats, SharedMetrics, SharedStats, enhanced_health_check,
     metrics_endpoint, monitoring_info_endpoint, performance_monitoring_middleware,
     setup_metrics_recorder,
-};
-
-// Re-export websocket modules
-pub use websocket::{
-    ClientMessage as WebSocketClientMessage, EventActor as WebSocketEventActor,
-    ServerMessage as WebSocketServerMessage, WebSocketAuthMode, WebSocketError, WebSocketHub,
-    WebSocketHubConfig, websocket_handler, websocket_router, websocket_router_with_auth,
 };
 
 /// 便捷函数：快速创建并启动服务器

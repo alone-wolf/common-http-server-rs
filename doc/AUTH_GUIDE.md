@@ -20,10 +20,11 @@
 ### 1. 配置认证
 
 ```rust
-use common_http_server_rs::auth::{auth_presets, BasicUser, SharedAuthConfig};
-use jsonwebtoken::Algorithm;
 use common_http_server_rs::HttpsPolicy;
+use common_http_server_rs::auth::{BasicUser, SharedAuthConfig};
+use common_http_server_rs::auth_presets;
 use ipnet::IpNet;
+use jsonwebtoken::Algorithm;
 
 // 使用预定义的开发环境配置
 let auth_config: SharedAuthConfig = auth_presets::development().shared();
@@ -73,8 +74,9 @@ let server = Server::new(ServerConfig::new(3000), app_builder);
 ```rust
 use axum::{middleware, Router};
 use common_http_server_rs::auth::{
-    auth_presets, basic_auth_middleware, api_key_auth_middleware, jwt_auth_middleware
+    api_key_auth_middleware, basic_auth_middleware, jwt_auth_middleware,
 };
+use common_http_server_rs::auth_presets;
 
 let auth_config = auth_presets::development().shared();
 
@@ -135,14 +137,14 @@ curl -H "Authorization: Bearer your-api-key" \
 ### JWT 认证
 
 ```bash
-# 先登录获取 token
+# 先登录获取 token（示例与 jwt_with_client 对齐）
 curl -X POST -H "Content-Type: application/json" \
-     -d '{"username":"admin","password":"admin123"}' \
-     http://localhost:8080/login
+     -d '{"username":"demo","password":"demo123"}' \
+     http://127.0.0.1:3000/auth/login
 
 # 使用 token 访问受保护的资源
 curl -H "Authorization: Bearer YOUR_JWT_TOKEN" \
-     http://localhost:8080/jwt/protected
+     http://127.0.0.1:3000/api/me
 ```
 
 ## 高级功能
@@ -178,7 +180,8 @@ async fn check_permissions(request: Request) -> &'static str {
 ### JWT 工具函数
 
 ```rust
-use common_http_server_rs::auth::{auth_presets, JwtUtils, User};
+use common_http_server_rs::auth::{JwtUtils, User};
+use common_http_server_rs::auth_presets;
 
 let auth_config = auth_presets::development();
 

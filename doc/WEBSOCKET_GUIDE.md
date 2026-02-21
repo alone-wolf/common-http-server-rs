@@ -1,18 +1,31 @@
 # WebSocket Group/Event Guide
 
-`common-http-server-rs` 提供基于 JSON 的 WebSocket 实时能力，当前阶段支持：
+`websocket` 提供基于 JSON 的 WebSocket 实时能力，当前阶段支持：
 
 - 连接鉴权（复用本包 auth 中间件：JWT / Basic / API Key）
 - Group（加入/离开分组）
 - Event（按 group 广播事件）
 
+## Feature 划分
+
+- `server`：提供 Axum WebSocket 服务端能力（hub、group/event、auth 集成）
+- `client`：提供异步 JSON WebSocket 客户端封装
+- `full`：同时启用 `server + client`
+
+依赖示例：
+
+```toml
+[dependencies]
+common-http-server-rs = { git = "https://github.com/alone-wolf/common-http-server-rs.git", branch = "main" }
+websocket = { git = "https://github.com/alone-wolf/common-http-server-rs.git", package = "websocket", branch = "main", default-features = false, features = ["server"] }
+```
+
 ## Quick Start
 
 ```rust
 use axum::Router;
-use common_http_server_rs::{
-    WebSocketAuthMode, WebSocketHub, auth_presets, websocket_router_with_auth,
-};
+use common_http_server_rs::auth_presets;
+use websocket::{WebSocketAuthMode, WebSocketHub, websocket_router_with_auth};
 
 let hub = WebSocketHub::new();
 let auth = auth_presets::development().shared();
@@ -22,6 +35,17 @@ let app = Router::new().merge(ws_router);
 ```
 
 > 当前阶段推荐优先使用 `WebSocketAuthMode::ApiKey`。
+
+客户端可使用链式初始化：
+
+```rust
+use websocket::WebSocketClient;
+
+let mut client = WebSocketClient::builder("ws://127.0.0.1:3006/realtime/ws")
+    .with_api_key_auth("dev-api-key-1")
+    .connect()
+    .await?;
+```
 
 ## Client -> Server JSON 协议
 
@@ -108,5 +132,5 @@ let app = Router::new().merge(ws_router);
 ## 运行示例
 
 ```bash
-cargo run --example websocket_group_events
+cargo run -p websocket --example websocket_group_events
 ```

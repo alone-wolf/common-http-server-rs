@@ -891,14 +891,23 @@ async fn check_external_service(service_url: &str) -> HealthCheckResult {
 }
 
 pub fn setup_metrics_recorder(state: MonitoringState) {
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_secs(5));
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle) => {
+            handle.spawn(async move {
+                let mut interval = tokio::time::interval(Duration::from_secs(5));
 
-        loop {
-            interval.tick().await;
-            state.update_system_metrics().await;
+                loop {
+                    interval.tick().await;
+                    state.update_system_metrics().await;
+                }
+            });
         }
-    });
+        Err(_) => {
+            tracing::warn!(
+                "setup_metrics_recorder called without an active Tokio runtime; metrics refresher is not started"
+            );
+        }
+    }
 }
 
 #[cfg(test)]
@@ -917,6 +926,11 @@ mod tests {
 
     async fn ok_handler() -> &'static str {
         "ok"
+    }
+
+    #[test]
+    fn setup_metrics_recorder_without_runtime_does_not_panic() {
+        setup_metrics_recorder(MonitoringState::new());
     }
 
     #[tokio::test]

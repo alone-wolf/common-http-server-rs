@@ -1,14 +1,4 @@
-//! WebSocket group/event messaging with JSON payloads.
-//!
-//! This module provides:
-//! - authenticated WebSocket route handlers (`websocket_handler`)
-//! - a shared in-memory hub (`WebSocketHub`) with group membership
-//! - JSON event protocol for join/leave/emit/ping commands
-
-use crate::auth::{
-    AuthError, AuthType, AuthUser, SharedAuthConfig, api_key_auth_middleware,
-    basic_auth_middleware, jwt_auth_middleware,
-};
+use crate::protocol::{ClientMessage, EventActor, ServerMessage};
 use axum::{
     Extension, Router,
     extract::{
@@ -20,8 +10,11 @@ use axum::{
     routing::get,
 };
 use chrono::Utc;
+use common_http_server_rs::{
+    AuthError, AuthType, AuthUser, SharedAuthConfig, api_key_auth_middleware,
+    basic_auth_middleware, jwt_auth_middleware,
+};
 use futures_util::{SinkExt, StreamExt};
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -29,85 +22,6 @@ use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::{RwLock, mpsc};
 use tracing::{debug, info, warn};
 use uuid::Uuid;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EventActor {
-    pub user_id: String,
-    pub username: String,
-    pub auth_type: String,
-}
-
-impl EventActor {
-    fn from_auth_user(auth_user: &AuthUser) -> Self {
-        let auth_type = match auth_user.auth_type {
-            AuthType::Basic => "basic",
-            AuthType::ApiKey => "api_key",
-            AuthType::Jwt => "jwt",
-        };
-
-        Self {
-            user_id: auth_user.user.id.clone(),
-            username: auth_user.user.username.clone(),
-            auth_type: auth_type.to_string(),
-        }
-    }
-
-    fn anonymous(connection_id: &str) -> Self {
-        Self {
-            user_id: format!("anonymous:{}", connection_id),
-            username: "anonymous".to_string(),
-            auth_type: "none".to_string(),
-        }
-    }
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum ClientMessage {
-    Join {
-        group: String,
-    },
-    Leave {
-        group: String,
-    },
-    Event {
-        group: String,
-        event: String,
-        payload: Value,
-    },
-    Ping {
-        nonce: Option<String>,
-    },
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum ServerMessage {
-    Connected {
-        connection_id: String,
-        actor: EventActor,
-    },
-    Joined {
-        group: String,
-    },
-    Left {
-        group: String,
-    },
-    Event {
-        group: String,
-        event: String,
-        payload: Value,
-        from: EventActor,
-        timestamp: String,
-    },
-    Pong {
-        nonce: Option<String>,
-    },
-    Error {
-        code: String,
-        message: String,
-    },
-}
 
 #[derive(Debug, thiserror::Error)]
 pub enum WebSocketError {
@@ -217,8 +131,8 @@ impl WebSocketHub {
 
         let actor = auth_user
             .as_ref()
-            .map(EventActor::from_auth_user)
-            .unwrap_or_else(|| EventActor::anonymous(&connection_id));
+            .map(event_actor_from_auth_user)
+            .unwrap_or_else(|| anonymous_actor(&connection_id));
 
         {
             let mut state = self.inner.write().await;
@@ -338,8 +252,8 @@ impl WebSocketHub {
             let actor = peer
                 .auth_user
                 .as_ref()
-                .map(EventActor::from_auth_user)
-                .unwrap_or_else(|| EventActor::anonymous(connection_id));
+                .map(event_actor_from_auth_user)
+                .unwrap_or_else(|| anonymous_actor(connection_id));
 
             let senders = members
                 .iter()
@@ -363,9 +277,7 @@ impl WebSocketHub {
                         connection_id: member_id.clone(),
                     });
                 }
-                Err(TrySendError::Closed(_)) => {
-                    return Err(WebSocketError::ConnectionNotFound);
-                }
+                Err(TrySendError::Closed(_)) => return Err(WebSocketError::ConnectionNotFound),
             }
         }
 
@@ -412,13 +324,34 @@ impl WebSocketHub {
     }
 }
 
+fn event_actor_from_auth_user(auth_user: &AuthUser) -> EventActor {
+    let auth_type = match auth_user.auth_type {
+        AuthType::Basic => "basic",
+        AuthType::ApiKey => "api_key",
+        AuthType::Jwt => "jwt",
+    };
+
+    EventActor {
+        user_id: auth_user.user.id.clone(),
+        username: auth_user.user.username.clone(),
+        auth_type: auth_type.to_string(),
+    }
+}
+
+fn anonymous_actor(connection_id: &str) -> EventActor {
+    EventActor {
+        user_id: format!("anonymous:{}", connection_id),
+        username: "anonymous".to_string(),
+        auth_type: "none".to_string(),
+    }
+}
+
 fn validate_group_name(group: &str) -> Result<(), WebSocketError> {
-    let trimmed = group.trim();
-    if trimmed.is_empty() || trimmed.len() > 64 {
+    if group.is_empty() || group.len() > 64 {
         return Err(WebSocketError::InvalidGroup);
     }
 
-    if !trimmed
+    if !group
         .chars()
         .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.' | ':'))
     {
@@ -429,12 +362,11 @@ fn validate_group_name(group: &str) -> Result<(), WebSocketError> {
 }
 
 fn validate_event_name(event: &str) -> Result<(), WebSocketError> {
-    let trimmed = event.trim();
-    if trimmed.is_empty() || trimmed.len() > 64 {
+    if event.is_empty() || event.len() > 64 {
         return Err(WebSocketError::InvalidEvent);
     }
 
-    if !trimmed
+    if !event
         .chars()
         .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.' | ':'))
     {
@@ -528,19 +460,13 @@ async fn websocket_session(socket: WebSocket, hub: WebSocketHub, auth_user: Opti
                 )
                 .await;
             }
-            Ok(Message::Ping(_)) | Ok(Message::Pong(_)) => {
-                // Control frames are handled by the underlying WebSocket implementation.
-            }
+            Ok(Message::Ping(_)) | Ok(Message::Pong(_)) => {}
             Ok(Message::Close(_)) => {
                 debug!(connection_id = %connection_id, "websocket close frame received");
                 break;
             }
             Err(err) => {
-                warn!(
-                    connection_id = %connection_id,
-                    error = %err,
-                    "websocket frame read failed"
-                );
+                warn!(connection_id = %connection_id, error = %err, "websocket frame read failed");
                 break;
             }
         }
@@ -637,7 +563,8 @@ async fn send_ws_error(hub: &WebSocketHub, connection_id: &str, code: &str, mess
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::auth::{AuthType, types::User};
+    use common_http_server_rs::AuthType;
+    use common_http_server_rs::auth::types::User;
 
     fn auth_user(name: &str) -> AuthUser {
         AuthUser {
@@ -761,6 +688,38 @@ mod tests {
             .unwrap_err();
 
         assert!(matches!(error, WebSocketError::OutboundQueueFull { .. }));
+    }
+
+    #[tokio::test]
+    async fn group_name_with_surrounding_whitespace_is_rejected() {
+        let hub = WebSocketHub::new();
+        let (connection_id, mut rx) = hub.register(Some(auth_user("alice"))).await;
+        let _ = rx.recv().await;
+
+        let error = hub
+            .join_group(&connection_id, " team.dev ")
+            .await
+            .unwrap_err();
+        assert!(matches!(error, WebSocketError::InvalidGroup));
+    }
+
+    #[tokio::test]
+    async fn event_name_with_surrounding_whitespace_is_rejected() {
+        let hub = WebSocketHub::new();
+        let (connection_id, mut rx) = hub.register(Some(auth_user("alice"))).await;
+        let _ = rx.recv().await;
+        hub.join_group(&connection_id, "team.dev").await.unwrap();
+
+        let error = hub
+            .emit_to_group(
+                &connection_id,
+                "team.dev",
+                " message.new ",
+                serde_json::json!({"text": "hello"}),
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(error, WebSocketError::InvalidEvent));
     }
 
     #[tokio::test]
