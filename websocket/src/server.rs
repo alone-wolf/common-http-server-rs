@@ -19,7 +19,6 @@ use futures_util::{SinkExt, StreamExt};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU8, Ordering};
 use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::{RwLock, mpsc};
 use tracing::{debug, info, warn};
@@ -27,17 +26,8 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum WebSocketFrameFormat {
-    TextJson = 0,
-    BinaryMessagePack = 1,
-}
-
-impl WebSocketFrameFormat {
-    fn from_u8(value: u8) -> Self {
-        match value {
-            1 => WebSocketFrameFormat::BinaryMessagePack,
-            _ => WebSocketFrameFormat::TextJson,
-        }
-    }
+    TextJson,
+    BinaryMessagePack,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -456,15 +446,9 @@ async fn websocket_session(
     info!(connection_id = %connection_id, "websocket connected");
 
     let (mut sender, mut receiver) = socket.split();
-    let frame_format = Arc::new(AtomicU8::new(initial_frame_format as u8));
-    let forward_frame_format = frame_format.clone();
-
     let forward_task = tokio::spawn(async move {
         while let Some(message) = rx.recv().await {
-            let format =
-                WebSocketFrameFormat::from_u8(forward_frame_format.load(Ordering::Relaxed));
-
-            let frame = match format {
+            let frame = match initial_frame_format {
                 WebSocketFrameFormat::TextJson => match serde_json::to_string(&message) {
                     Ok(payload) => Message::Text(payload.into()),
                     Err(err) => {
@@ -492,15 +476,30 @@ async fn websocket_session(
     while let Some(frame_result) = receiver.next().await {
         match frame_result {
             Ok(Message::Text(text)) => {
-                frame_format.store(WebSocketFrameFormat::TextJson as u8, Ordering::Relaxed);
-                process_client_text_frame(&hub, &connection_id, &text).await;
+                if initial_frame_format == WebSocketFrameFormat::TextJson {
+                    process_client_text_frame(&hub, &connection_id, &text).await;
+                } else {
+                    send_ws_error(
+                        &hub,
+                        &connection_id,
+                        "frame_format_mismatch",
+                        "Connection negotiated MessagePack binary frames but received text frame",
+                    )
+                    .await;
+                }
             }
             Ok(Message::Binary(payload)) => {
-                frame_format.store(
-                    WebSocketFrameFormat::BinaryMessagePack as u8,
-                    Ordering::Relaxed,
-                );
-                process_client_binary_frame(&hub, &connection_id, &payload).await;
+                if initial_frame_format == WebSocketFrameFormat::BinaryMessagePack {
+                    process_client_binary_frame(&hub, &connection_id, &payload).await;
+                } else {
+                    send_ws_error(
+                        &hub,
+                        &connection_id,
+                        "frame_format_mismatch",
+                        "Connection negotiated JSON text frames but received binary frame",
+                    )
+                    .await;
+                }
             }
             Ok(Message::Ping(_)) | Ok(Message::Pong(_)) => {}
             Ok(Message::Close(_)) => {
@@ -527,9 +526,10 @@ fn detect_initial_frame_format(headers: &HeaderMap) -> WebSocketFrameFormat {
         return WebSocketFrameFormat::TextJson;
     };
 
-    let supports_msgpack = raw.split(',').map(str::trim).any(|token| {
-        token.eq_ignore_ascii_case("msgpack") || token.eq_ignore_ascii_case("messagepack")
-    });
+    let supports_msgpack = raw
+        .split(',')
+        .map(str::trim)
+        .any(|token| token.eq_ignore_ascii_case("msgpack"));
 
     if supports_msgpack {
         WebSocketFrameFormat::BinaryMessagePack
@@ -817,6 +817,20 @@ mod tests {
         assert_eq!(
             detect_initial_frame_format(&headers),
             WebSocketFrameFormat::BinaryMessagePack
+        );
+    }
+
+    #[test]
+    fn detect_messagepack_alias_is_not_selected() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            SEC_WEBSOCKET_PROTOCOL,
+            HeaderValue::from_static("messagepack"),
+        );
+
+        assert_eq!(
+            detect_initial_frame_format(&headers),
+            WebSocketFrameFormat::TextJson
         );
     }
 

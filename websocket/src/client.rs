@@ -24,8 +24,6 @@ pub enum WebSocketClientError {
     InvalidHeaderValue(#[from] http::header::InvalidHeaderValue),
     #[error("websocket connection closed")]
     ConnectionClosed,
-    #[error("unsupported incoming frame type")]
-    UnexpectedFrame,
 }
 
 pub struct WebSocketClient {

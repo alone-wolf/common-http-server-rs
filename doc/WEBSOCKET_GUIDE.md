@@ -1,6 +1,6 @@
 # WebSocket Group/Event Guide
 
-`websocket` 提供基于 JSON 的 WebSocket 实时能力，当前阶段支持：
+`websocket` 提供基于结构化消息的 WebSocket 实时能力，当前阶段支持：
 
 - 连接鉴权（复用本包 auth 中间件：JWT / Basic / API Key）
 - Group（加入/离开分组）
@@ -48,7 +48,7 @@ let mut client = WebSocketClient::builder("ws://127.0.0.1:3006/realtime/ws")
     .await?;
 ```
 
-## Client -> Server JSON 协议
+## Client -> Server 消息结构
 
 ### 1) 加入分组
 
@@ -74,7 +74,7 @@ let mut client = WebSocketClient::builder("ws://127.0.0.1:3006/realtime/ws")
 {"type":"ping","nonce":"abc-123"}
 ```
 
-## Server -> Client JSON 协议
+## Server -> Client 消息结构
 
 ### connected
 
@@ -126,6 +126,10 @@ let mut client = WebSocketClient::builder("ws://127.0.0.1:3006/realtime/ws")
 - 协议支持两种帧格式：
   - 文本帧：JSON
   - 二进制帧：MessagePack（结构化消息）
+- 帧格式在握手阶段确定并在连接生命周期内保持一致：
+  - 客户端声明 `Sec-WebSocket-Protocol: msgpack` 时使用二进制 MessagePack
+  - 未声明时默认使用文本 JSON
+  - 若连接收到与协商格式不一致的帧，会返回 `frame_format_mismatch`
 - 出站消息队列为有界队列；当目标连接队列已满时，事件会被拒绝并返回 `outbound_queue_full`。
 - `group` 和 `event` 名称限制：
   - 非空

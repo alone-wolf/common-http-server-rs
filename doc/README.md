@@ -11,7 +11,7 @@
 4. `MONITORING_GUIDE.md`  
    监控、指标、健康检查。
 5. `WEBSOCKET_GUIDE.md`  
-   WebSocket 实时通信（JSON 协议、group/event、auth 鉴权）。
+   WebSocket 实时通信（JSON 文本帧 + MessagePack 二进制帧、group/event、auth 鉴权）。
 6. `CORS_GUIDE.md`  
    跨域配置与常见误区。
 7. `SECURITY_NOTES.md`  

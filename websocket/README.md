@@ -26,3 +26,7 @@ let mut client = WebSocketClient::builder("ws://127.0.0.1:3006/realtime/ws")
     .connect()
     .await?;
 ```
+
+连接帧格式在握手阶段确定：
+- 使用 `.with_binary_messagepack()` 时通过 `Sec-WebSocket-Protocol: msgpack` 协商二进制 MessagePack。
+- 默认未声明子协议时使用文本 JSON。
