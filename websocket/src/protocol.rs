@@ -1,6 +1,21 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+pub const WS_SUBPROTOCOL_MSGPACK_V1: &str = "chs.v1.msgpack";
+pub const WS_SUBPROTOCOL_JSON_V1: &str = "chs.v1.json";
+pub const WS_SUBPROTOCOL_MSGPACK_LEGACY: &str = "msgpack";
+pub const WS_SUBPROTOCOL_JSON_LEGACY: &str = "json";
+
+pub fn is_msgpack_subprotocol(value: &str) -> bool {
+    value.eq_ignore_ascii_case(WS_SUBPROTOCOL_MSGPACK_V1)
+        || value.eq_ignore_ascii_case(WS_SUBPROTOCOL_MSGPACK_LEGACY)
+}
+
+pub fn is_json_subprotocol(value: &str) -> bool {
+    value.eq_ignore_ascii_case(WS_SUBPROTOCOL_JSON_V1)
+        || value.eq_ignore_ascii_case(WS_SUBPROTOCOL_JSON_LEGACY)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventActor {
     pub user_id: String,
@@ -19,6 +34,11 @@ pub enum ClientMessage {
     },
     Event {
         group: String,
+        event: String,
+        payload: Value,
+    },
+    Direct {
+        to_connection_id: String,
         event: String,
         payload: Value,
     },
@@ -42,6 +62,13 @@ pub enum ServerMessage {
     },
     Event {
         group: String,
+        event: String,
+        payload: Value,
+        from: EventActor,
+        timestamp: String,
+    },
+    Direct {
+        from_connection_id: String,
         event: String,
         payload: Value,
         from: EventActor,

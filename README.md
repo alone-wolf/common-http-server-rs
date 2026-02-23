@@ -29,6 +29,7 @@ cargo run --example jwt_with_client --features external-health
 
 # WebSocket 示例（workspace 子 crate）
 cargo run -p websocket --example websocket_group_events
+cargo run -p websocket --example websocket_cs_state_dashboard
 ```
 
 ## 通过 Git 引入依赖（完整写法）
@@ -175,5 +176,5 @@ cargo check --examples --all-features
 
 `websocket`：
 - `server`：WebSocket server/group/event 能力（依赖主 crate 的认证中间件）
-- `client`：异步 WebSocket JSON 客户端
+- `client`：异步 WebSocket 客户端（JSON + MessagePack，含子协议协商）
 - `full`：默认开启（`server` + `client`）

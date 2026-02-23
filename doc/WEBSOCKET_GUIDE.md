@@ -43,8 +43,12 @@ use websocket::WebSocketClient;
 
 let mut client = WebSocketClient::builder("ws://127.0.0.1:3006/realtime/ws")
     .with_api_key_auth("dev-api-key-1")
-    .with_binary_messagepack()
+    .prefer_msgpack()
     .connect()
+    .await?;
+
+client
+    .emit_direct("<target-connection-id>", "direct.notice", serde_json::json!({"text":"hello"}))
     .await?;
 ```
 
@@ -72,6 +76,12 @@ let mut client = WebSocketClient::builder("ws://127.0.0.1:3006/realtime/ws")
 
 ```json
 {"type":"ping","nonce":"abc-123"}
+```
+
+### 5) 单播（客户端 -> 客户端）
+
+```json
+{"type":"direct","to_connection_id":"<target-connection-id>","event":"direct.notice","payload":{"text":"hello"}}
 ```
 
 ## Server -> Client 消息结构
@@ -102,6 +112,19 @@ let mut client = WebSocketClient::builder("ws://127.0.0.1:3006/realtime/ws")
 }
 ```
 
+### direct
+
+```json
+{
+  "type":"direct",
+  "from_connection_id":"<sender-connection-id>",
+  "event":"direct.notice",
+  "payload":{"text":"hello"},
+  "from":{"user_id":"...","username":"alice","auth_type":"api_key"},
+  "timestamp":"2026-02-23T00:00:00Z"
+}
+```
+
 ### pong / error
 
 ```json
@@ -127,17 +150,32 @@ let mut client = WebSocketClient::builder("ws://127.0.0.1:3006/realtime/ws")
   - 文本帧：JSON
   - 二进制帧：MessagePack（结构化消息）
 - 帧格式在握手阶段确定并在连接生命周期内保持一致：
-  - 客户端声明 `Sec-WebSocket-Protocol: msgpack` 时使用二进制 MessagePack
-  - 未声明时默认使用文本 JSON
-  - 若连接收到与协商格式不一致的帧，会返回 `frame_format_mismatch`
+  - 服务端支持子协议：`chs.v1.msgpack` / `msgpack` / `chs.v1.json` / `json`（优先 MessagePack）
+  - 客户端 `force_msgpack` / `with_binary_messagepack` 会声明 `chs.v1.msgpack, msgpack`
+  - 客户端 `prefer_msgpack` 会声明 `chs.v1.msgpack, msgpack, chs.v1.json, json`，优先 MessagePack 并允许回落 JSON
+  - 客户端默认（或 `force_json` / `with_text_json`）使用 JSON 子协议
+  - 若连接收到与协商格式不一致的帧，会返回 `frame_format_mismatch` 并断开连接
 - 出站消息队列为有界队列；当目标连接队列已满时，事件会被拒绝并返回 `outbound_queue_full`。
 - `group` 和 `event` 名称限制：
   - 非空
   - 长度 <= 64
   - 仅允许 `[A-Za-z0-9_.:-]`
+- `direct.to_connection_id` 限制：
+  - 非空
+  - 长度 <= 128
+  - 不能包含空白字符
 
 ## 运行示例
 
 ```bash
 cargo run -p websocket --example websocket_group_events
+cargo run -p websocket --example websocket_cs_state_dashboard
 ```
+
+## 调试建议
+
+- 推荐先用 `websocket/examples/websocket_cs_demo.rs` 验证收发链路（默认可切换到 MessagePack）。
+- 若需要完整的 C/S 事件管理和状态面板输出，可运行 `websocket/examples/websocket_cs_state_dashboard.rs`。
+- 若使用 MessagePack，请确认请求头包含：
+  - `Sec-WebSocket-Protocol: chs.v1.msgpack, msgpack`
+- 若收到 `frame_format_mismatch`，表示连接协商格式与实际发送帧类型不一致（例如协商了 MessagePack 却发了文本帧）。

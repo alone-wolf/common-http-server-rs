@@ -1,4 +1,7 @@
-use crate::protocol::{ClientMessage, ServerMessage};
+use crate::protocol::{
+    ClientMessage, ServerMessage, WS_SUBPROTOCOL_JSON_V1, WS_SUBPROTOCOL_MSGPACK_V1,
+    is_json_subprotocol, is_msgpack_subprotocol,
+};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use futures_util::{SinkExt, StreamExt};
 use http::{HeaderValue, Request, header::AUTHORIZATION, header::SEC_WEBSOCKET_PROTOCOL};
@@ -22,6 +25,19 @@ pub enum WebSocketClientError {
     RequestBuild(#[from] http::Error),
     #[error("invalid header value: {0}")]
     InvalidHeaderValue(#[from] http::header::InvalidHeaderValue),
+    #[error("unsupported negotiated websocket subprotocol: {0}")]
+    UnsupportedNegotiatedSubprotocol(String),
+    #[error(
+        "websocket subprotocol negotiation mismatch: expected {expected}, negotiated {negotiated}"
+    )]
+    SubprotocolNegotiationMismatch {
+        expected: &'static str,
+        negotiated: String,
+    },
+    #[error(
+        "websocket subprotocol negotiation mismatch: expected {expected}, but server did not select a subprotocol"
+    )]
+    MissingNegotiatedSubprotocol { expected: &'static str },
     #[error("websocket connection closed")]
     ConnectionClosed,
 }
@@ -36,6 +52,14 @@ pub enum WebSocketFrameFormat {
     #[default]
     TextJson,
     BinaryMessagePack,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum WebSocketProtocolPreference {
+    #[default]
+    ForceJson,
+    ForceMsgpack,
+    PreferMsgpack,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -53,7 +77,7 @@ enum WebSocketClientAuth {
 pub struct WebSocketClientBuilder {
     url: String,
     auth: WebSocketClientAuth,
-    frame_format: WebSocketFrameFormat,
+    protocol_preference: WebSocketProtocolPreference,
 }
 
 impl WebSocketClient {
@@ -61,7 +85,7 @@ impl WebSocketClient {
         WebSocketClientBuilder {
             url: url.into(),
             auth: WebSocketClientAuth::None,
-            frame_format: WebSocketFrameFormat::TextJson,
+            protocol_preference: WebSocketProtocolPreference::ForceJson,
         }
     }
 
@@ -134,6 +158,20 @@ impl WebSocketClient {
         .await
     }
 
+    pub async fn emit_direct(
+        &mut self,
+        to_connection_id: impl Into<String>,
+        event: impl Into<String>,
+        payload: Value,
+    ) -> Result<(), WebSocketClientError> {
+        self.send(&ClientMessage::Direct {
+            to_connection_id: to_connection_id.into(),
+            event: event.into(),
+            payload,
+        })
+        .await
+    }
+
     pub async fn ping(&mut self, nonce: Option<String>) -> Result<(), WebSocketClientError> {
         self.send(&ClientMessage::Ping { nonce }).await
     }
@@ -174,24 +212,47 @@ impl WebSocketClientBuilder {
     }
 
     pub fn with_frame_format(mut self, format: WebSocketFrameFormat) -> Self {
-        self.frame_format = format;
+        self.protocol_preference = match format {
+            WebSocketFrameFormat::TextJson => WebSocketProtocolPreference::ForceJson,
+            WebSocketFrameFormat::BinaryMessagePack => WebSocketProtocolPreference::ForceMsgpack,
+        };
         self
     }
 
     pub fn with_binary_messagepack(self) -> Self {
-        self.with_frame_format(WebSocketFrameFormat::BinaryMessagePack)
+        self.force_msgpack()
     }
 
     pub fn with_text_json(self) -> Self {
-        self.with_frame_format(WebSocketFrameFormat::TextJson)
+        self.force_json()
+    }
+
+    pub fn force_msgpack(mut self) -> Self {
+        self.protocol_preference = WebSocketProtocolPreference::ForceMsgpack;
+        self
+    }
+
+    pub fn force_json(mut self) -> Self {
+        self.protocol_preference = WebSocketProtocolPreference::ForceJson;
+        self
+    }
+
+    pub fn prefer_msgpack(mut self) -> Self {
+        self.protocol_preference = WebSocketProtocolPreference::PreferMsgpack;
+        self
     }
 
     pub async fn connect(self) -> Result<WebSocketClient, WebSocketClientError> {
         let request = self.build_request()?;
-        let (stream, _) = connect_async(request).await?;
+        let (stream, response) = connect_async(request).await?;
+        let negotiated_subprotocol = response
+            .headers()
+            .get(SEC_WEBSOCKET_PROTOCOL)
+            .and_then(|value| value.to_str().ok());
+        let frame_format = resolve_frame_format(self.protocol_preference, negotiated_subprotocol)?;
         Ok(WebSocketClient {
             stream,
-            frame_format: self.frame_format,
+            frame_format,
         })
     }
 
@@ -201,12 +262,74 @@ impl WebSocketClientBuilder {
             let header_value = HeaderValue::from_str(&authorization)?;
             request.headers_mut().insert(AUTHORIZATION, header_value);
         }
-        if self.frame_format == WebSocketFrameFormat::BinaryMessagePack {
-            request
-                .headers_mut()
-                .insert(SEC_WEBSOCKET_PROTOCOL, HeaderValue::from_static("msgpack"));
-        }
+        request.headers_mut().insert(
+            SEC_WEBSOCKET_PROTOCOL,
+            HeaderValue::from_static(self.protocol_preference.request_subprotocols_header()),
+        );
         Ok(request)
+    }
+}
+
+impl WebSocketProtocolPreference {
+    fn request_subprotocols_header(self) -> &'static str {
+        match self {
+            WebSocketProtocolPreference::ForceJson => "chs.v1.json, json",
+            WebSocketProtocolPreference::ForceMsgpack => "chs.v1.msgpack, msgpack",
+            WebSocketProtocolPreference::PreferMsgpack => {
+                "chs.v1.msgpack, msgpack, chs.v1.json, json"
+            }
+        }
+    }
+}
+
+fn resolve_frame_format(
+    preference: WebSocketProtocolPreference,
+    negotiated_subprotocol: Option<&str>,
+) -> Result<WebSocketFrameFormat, WebSocketClientError> {
+    let negotiated_format = match negotiated_subprotocol {
+        Some(token) if is_msgpack_subprotocol(token) => {
+            Some(WebSocketFrameFormat::BinaryMessagePack)
+        }
+        Some(token) if is_json_subprotocol(token) => Some(WebSocketFrameFormat::TextJson),
+        Some(token) => {
+            return Err(WebSocketClientError::UnsupportedNegotiatedSubprotocol(
+                token.to_string(),
+            ));
+        }
+        None => None,
+    };
+
+    match preference {
+        WebSocketProtocolPreference::ForceMsgpack => match negotiated_format {
+            Some(WebSocketFrameFormat::BinaryMessagePack) => {
+                Ok(WebSocketFrameFormat::BinaryMessagePack)
+            }
+            Some(WebSocketFrameFormat::TextJson) => {
+                Err(WebSocketClientError::SubprotocolNegotiationMismatch {
+                    expected: WS_SUBPROTOCOL_MSGPACK_V1,
+                    negotiated: negotiated_subprotocol
+                        .unwrap_or(WS_SUBPROTOCOL_JSON_V1)
+                        .to_string(),
+                })
+            }
+            None => Err(WebSocketClientError::MissingNegotiatedSubprotocol {
+                expected: WS_SUBPROTOCOL_MSGPACK_V1,
+            }),
+        },
+        WebSocketProtocolPreference::ForceJson => match negotiated_format {
+            Some(WebSocketFrameFormat::BinaryMessagePack) => {
+                Err(WebSocketClientError::SubprotocolNegotiationMismatch {
+                    expected: WS_SUBPROTOCOL_JSON_V1,
+                    negotiated: negotiated_subprotocol
+                        .unwrap_or(WS_SUBPROTOCOL_MSGPACK_V1)
+                        .to_string(),
+                })
+            }
+            Some(WebSocketFrameFormat::TextJson) | None => Ok(WebSocketFrameFormat::TextJson),
+        },
+        WebSocketProtocolPreference::PreferMsgpack => {
+            Ok(negotiated_format.unwrap_or(WebSocketFrameFormat::TextJson))
+        }
     }
 }
 
@@ -299,8 +422,68 @@ mod tests {
                 .headers()
                 .get(SEC_WEBSOCKET_PROTOCOL)
                 .and_then(|v| v.to_str().ok()),
-            Some("msgpack")
+            Some("chs.v1.msgpack, msgpack")
         );
+    }
+
+    #[test]
+    fn prefer_msgpack_sets_fallback_subprotocol_header() {
+        let request = WebSocketClient::builder("ws://localhost:3000/ws")
+            .prefer_msgpack()
+            .build_request()
+            .expect("request should be built");
+
+        assert_eq!(
+            request
+                .headers()
+                .get(SEC_WEBSOCKET_PROTOCOL)
+                .and_then(|v| v.to_str().ok()),
+            Some("chs.v1.msgpack, msgpack, chs.v1.json, json")
+        );
+    }
+
+    #[test]
+    fn resolve_frame_format_for_prefer_msgpack_legacy_token() {
+        let format = resolve_frame_format(
+            WebSocketProtocolPreference::PreferMsgpack,
+            Some(crate::protocol::WS_SUBPROTOCOL_MSGPACK_LEGACY),
+        )
+        .expect("subprotocol should map");
+
+        assert_eq!(format, WebSocketFrameFormat::BinaryMessagePack);
+    }
+
+    #[test]
+    fn resolve_frame_format_for_prefer_msgpack_without_negotiation_falls_back_to_json() {
+        let format = resolve_frame_format(WebSocketProtocolPreference::PreferMsgpack, None)
+            .expect("fallback should be json");
+
+        assert_eq!(format, WebSocketFrameFormat::TextJson);
+    }
+
+    #[test]
+    fn resolve_frame_format_force_msgpack_requires_negotiated_msgpack() {
+        let error = resolve_frame_format(WebSocketProtocolPreference::ForceMsgpack, None)
+            .expect_err("missing subprotocol should fail");
+
+        assert!(matches!(
+            error,
+            WebSocketClientError::MissingNegotiatedSubprotocol { .. }
+        ));
+    }
+
+    #[test]
+    fn resolve_frame_format_rejects_unknown_negotiated_subprotocol() {
+        let error = resolve_frame_format(
+            WebSocketProtocolPreference::PreferMsgpack,
+            Some("custom.v1"),
+        )
+        .expect_err("unknown subprotocol should fail");
+
+        assert!(matches!(
+            error,
+            WebSocketClientError::UnsupportedNegotiatedSubprotocol(_)
+        ));
     }
 
     #[test]
@@ -323,6 +506,35 @@ mod tests {
                 }
             }
             _ => panic!("expected binary frame"),
+        }
+    }
+
+    #[test]
+    fn encode_direct_message_as_text_frame() {
+        let frame = encode_client_message(
+            &ClientMessage::Direct {
+                to_connection_id: "conn-2".to_string(),
+                event: "direct.notice".to_string(),
+                payload: serde_json::json!({"text":"hello"}),
+            },
+            WebSocketFrameFormat::TextJson,
+        )
+        .expect("frame should be built");
+
+        match frame {
+            Message::Text(text) => {
+                let decoded: ClientMessage =
+                    serde_json::from_str(text.as_ref()).expect("text should decode");
+                assert!(matches!(
+                    decoded,
+                    ClientMessage::Direct {
+                        to_connection_id,
+                        event,
+                        ..
+                    } if to_connection_id == "conn-2" && event == "direct.notice"
+                ));
+            }
+            _ => panic!("expected text frame"),
         }
     }
 }

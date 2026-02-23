@@ -1,11 +1,14 @@
-use crate::protocol::{ClientMessage, EventActor, ServerMessage};
+use crate::protocol::{
+    ClientMessage, EventActor, ServerMessage, WS_SUBPROTOCOL_JSON_LEGACY, WS_SUBPROTOCOL_JSON_V1,
+    WS_SUBPROTOCOL_MSGPACK_LEGACY, WS_SUBPROTOCOL_MSGPACK_V1, is_json_subprotocol,
+    is_msgpack_subprotocol,
+};
 use axum::{
     Extension, Router,
     extract::{
         State,
         ws::{Message, WebSocket, WebSocketUpgrade},
     },
-    http::{HeaderMap, header::SEC_WEBSOCKET_PROTOCOL},
     middleware,
     response::IntoResponse,
     routing::get,
@@ -34,6 +37,10 @@ enum WebSocketFrameFormat {
 pub enum WebSocketError {
     #[error("connection not found")]
     ConnectionNotFound,
+    #[error("invalid target connection id")]
+    InvalidTargetConnectionId,
+    #[error("target connection '{connection_id}' not found")]
+    TargetConnectionNotFound { connection_id: String },
     #[error("invalid group name")]
     InvalidGroup,
     #[error("invalid event name")]
@@ -50,6 +57,8 @@ impl WebSocketError {
     fn code(&self) -> &'static str {
         match self {
             WebSocketError::ConnectionNotFound => "connection_not_found",
+            WebSocketError::InvalidTargetConnectionId => "invalid_target_connection_id",
+            WebSocketError::TargetConnectionNotFound { .. } => "target_connection_not_found",
             WebSocketError::InvalidGroup => "invalid_group",
             WebSocketError::InvalidEvent => "invalid_event",
             WebSocketError::GroupNotFound { .. } => "group_not_found",
@@ -305,6 +314,60 @@ impl WebSocketHub {
         Ok(delivered)
     }
 
+    pub async fn emit_to_connection(
+        &self,
+        from_connection_id: &str,
+        to_connection_id: &str,
+        event: &str,
+        payload: Value,
+    ) -> Result<(), WebSocketError> {
+        validate_target_connection_id(to_connection_id)?;
+        validate_event_name(event)?;
+
+        let (target_sender, actor) = {
+            let state = self.inner.read().await;
+
+            let from_peer = state
+                .peers
+                .get(from_connection_id)
+                .ok_or(WebSocketError::ConnectionNotFound)?;
+
+            let actor = from_peer
+                .auth_user
+                .as_ref()
+                .map(event_actor_from_auth_user)
+                .unwrap_or_else(|| anonymous_actor(from_connection_id));
+
+            let target_sender = state
+                .peers
+                .get(to_connection_id)
+                .map(|peer| peer.sender.clone())
+                .ok_or_else(|| WebSocketError::TargetConnectionNotFound {
+                    connection_id: to_connection_id.to_string(),
+                })?;
+
+            (target_sender, actor)
+        };
+
+        let message = ServerMessage::Direct {
+            from_connection_id: from_connection_id.to_string(),
+            event: event.to_string(),
+            payload,
+            from: actor,
+            timestamp: Utc::now().to_rfc3339(),
+        };
+
+        match target_sender.try_send(message) {
+            Ok(_) => Ok(()),
+            Err(TrySendError::Full(_)) => Err(WebSocketError::OutboundQueueFull {
+                connection_id: to_connection_id.to_string(),
+            }),
+            Err(TrySendError::Closed(_)) => Err(WebSocketError::TargetConnectionNotFound {
+                connection_id: to_connection_id.to_string(),
+            }),
+        }
+    }
+
     pub async fn send_to_connection(
         &self,
         connection_id: &str,
@@ -383,14 +446,33 @@ fn validate_event_name(event: &str) -> Result<(), WebSocketError> {
     Ok(())
 }
 
+fn validate_target_connection_id(connection_id: &str) -> Result<(), WebSocketError> {
+    if connection_id.is_empty() || connection_id.len() > 128 {
+        return Err(WebSocketError::InvalidTargetConnectionId);
+    }
+
+    if connection_id.chars().any(char::is_whitespace) {
+        return Err(WebSocketError::InvalidTargetConnectionId);
+    }
+
+    Ok(())
+}
+
 pub async fn websocket_handler(
     ws: WebSocketUpgrade,
     State((hub, auth_mode)): State<(WebSocketHub, WebSocketAuthMode)>,
-    headers: HeaderMap,
     auth_user: Option<Extension<AuthUser>>,
 ) -> axum::response::Response {
-    let initial_frame_format = detect_initial_frame_format(&headers);
-    let ws = ws.protocols(["msgpack", "json"]);
+    let ws = ws.protocols([
+        WS_SUBPROTOCOL_MSGPACK_V1,
+        WS_SUBPROTOCOL_MSGPACK_LEGACY,
+        WS_SUBPROTOCOL_JSON_V1,
+        WS_SUBPROTOCOL_JSON_LEGACY,
+    ]);
+    let initial_frame_format = frame_format_from_subprotocol(
+        ws.selected_protocol()
+            .and_then(|protocol| protocol.to_str().ok()),
+    );
 
     let auth_user = match (auth_mode, auth_user) {
         (WebSocketAuthMode::None, Some(Extension(auth_user))) => Some(auth_user),
@@ -486,6 +568,7 @@ async fn websocket_session(
                         "Connection negotiated MessagePack binary frames but received text frame",
                     )
                     .await;
+                    break;
                 }
             }
             Ok(Message::Binary(payload)) => {
@@ -499,6 +582,7 @@ async fn websocket_session(
                         "Connection negotiated JSON text frames but received binary frame",
                     )
                     .await;
+                    break;
                 }
             }
             Ok(Message::Ping(_)) | Ok(Message::Pong(_)) => {}
@@ -518,23 +602,11 @@ async fn websocket_session(
     info!(connection_id = %connection_id, "websocket disconnected");
 }
 
-fn detect_initial_frame_format(headers: &HeaderMap) -> WebSocketFrameFormat {
-    let Some(raw) = headers
-        .get(SEC_WEBSOCKET_PROTOCOL)
-        .and_then(|value| value.to_str().ok())
-    else {
-        return WebSocketFrameFormat::TextJson;
-    };
-
-    let supports_msgpack = raw
-        .split(',')
-        .map(str::trim)
-        .any(|token| token.eq_ignore_ascii_case("msgpack"));
-
-    if supports_msgpack {
-        WebSocketFrameFormat::BinaryMessagePack
-    } else {
-        WebSocketFrameFormat::TextJson
+fn frame_format_from_subprotocol(protocol: Option<&str>) -> WebSocketFrameFormat {
+    match protocol {
+        Some(token) if is_msgpack_subprotocol(token) => WebSocketFrameFormat::BinaryMessagePack,
+        Some(token) if is_json_subprotocol(token) => WebSocketFrameFormat::TextJson,
+        _ => WebSocketFrameFormat::TextJson,
     }
 }
 
@@ -617,6 +689,24 @@ async fn process_client_message(hub: &WebSocketHub, connection_id: &str, message
             }
             Err(err) => send_ws_error(hub, connection_id, err.code(), &err.to_string()).await,
         },
+        ClientMessage::Direct {
+            to_connection_id,
+            event,
+            payload,
+        } => match hub
+            .emit_to_connection(connection_id, &to_connection_id, &event, payload)
+            .await
+        {
+            Ok(_) => {
+                debug!(
+                    connection_id = %connection_id,
+                    to_connection_id = %to_connection_id,
+                    event = %event,
+                    "direct event delivered"
+                );
+            }
+            Err(err) => send_ws_error(hub, connection_id, err.code(), &err.to_string()).await,
+        },
         ClientMessage::Ping { nonce } => {
             if let Err(err) = hub
                 .send_to_connection(connection_id, ServerMessage::Pong { nonce })
@@ -646,9 +736,15 @@ async fn send_ws_error(hub: &WebSocketHub, connection_id: &str, code: &str, mess
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::http::{HeaderMap, HeaderValue, header::SEC_WEBSOCKET_PROTOCOL};
+    use axum::http::HeaderValue;
     use common_http_server_rs::AuthType;
     use common_http_server_rs::auth::types::User;
+    use futures_util::{SinkExt, StreamExt};
+    use tokio::sync::mpsc::error::TryRecvError;
+    use tokio_tungstenite::connect_async;
+    use tokio_tungstenite::tungstenite::Message as TungsteniteMessage;
+    use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+    use tokio_tungstenite::tungstenite::http::header::SEC_WEBSOCKET_PROTOCOL as WS_PROTOCOL;
 
     fn auth_user(name: &str) -> AuthUser {
         AuthUser {
@@ -731,6 +827,68 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn direct_event_delivers_only_to_target_connection() {
+        let hub = WebSocketHub::new();
+
+        let (alice_id, mut alice_rx) = hub.register(Some(auth_user("alice"))).await;
+        let _ = alice_rx.recv().await;
+
+        let (bob_id, mut bob_rx) = hub.register(Some(auth_user("bob"))).await;
+        let _ = bob_rx.recv().await;
+
+        let (_carol_id, mut carol_rx) = hub.register(Some(auth_user("carol"))).await;
+        let _ = carol_rx.recv().await;
+
+        hub.emit_to_connection(
+            &alice_id,
+            &bob_id,
+            "direct.notice",
+            serde_json::json!({"text": "hello bob"}),
+        )
+        .await
+        .expect("direct message should be delivered");
+
+        let bob_msg = bob_rx.recv().await.expect("target should receive message");
+        match bob_msg {
+            ServerMessage::Direct {
+                from_connection_id,
+                event,
+                payload,
+                from,
+                ..
+            } => {
+                assert_eq!(from_connection_id, alice_id);
+                assert_eq!(event, "direct.notice");
+                assert_eq!(payload, serde_json::json!({"text": "hello bob"}));
+                assert_eq!(from.username, "alice");
+            }
+            _ => panic!("expected direct message"),
+        }
+
+        assert!(matches!(alice_rx.try_recv(), Err(TryRecvError::Empty)));
+        assert!(matches!(carol_rx.try_recv(), Err(TryRecvError::Empty)));
+    }
+
+    #[tokio::test]
+    async fn direct_event_with_invalid_target_connection_id_is_rejected() {
+        let hub = WebSocketHub::new();
+        let (alice_id, mut alice_rx) = hub.register(Some(auth_user("alice"))).await;
+        let _ = alice_rx.recv().await;
+
+        let error = hub
+            .emit_to_connection(
+                &alice_id,
+                " invalid target ",
+                "direct.notice",
+                serde_json::json!({"text": "x"}),
+            )
+            .await
+            .expect_err("invalid target id should be rejected");
+
+        assert!(matches!(error, WebSocketError::InvalidTargetConnectionId));
+    }
+
+    #[tokio::test]
     async fn emit_requires_membership() {
         let hub = WebSocketHub::new();
         let (connection_id, mut rx) = hub.register(Some(auth_user("alice"))).await;
@@ -807,29 +965,25 @@ mod tests {
     }
 
     #[test]
-    fn detect_msgpack_subprotocol_as_binary_format() {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            SEC_WEBSOCKET_PROTOCOL,
-            HeaderValue::from_static("json,msgpack"),
-        );
-
+    fn subprotocol_v1_msgpack_maps_to_binary_format() {
         assert_eq!(
-            detect_initial_frame_format(&headers),
+            frame_format_from_subprotocol(Some(WS_SUBPROTOCOL_MSGPACK_V1)),
             WebSocketFrameFormat::BinaryMessagePack
         );
     }
 
     #[test]
-    fn detect_messagepack_alias_is_not_selected() {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            SEC_WEBSOCKET_PROTOCOL,
-            HeaderValue::from_static("messagepack"),
-        );
-
+    fn subprotocol_legacy_msgpack_maps_to_binary_format() {
         assert_eq!(
-            detect_initial_frame_format(&headers),
+            frame_format_from_subprotocol(Some(WS_SUBPROTOCOL_MSGPACK_LEGACY)),
+            WebSocketFrameFormat::BinaryMessagePack
+        );
+    }
+
+    #[test]
+    fn unknown_subprotocol_maps_to_text_json_format() {
+        assert_eq!(
+            frame_format_from_subprotocol(Some("messagepack")),
             WebSocketFrameFormat::TextJson
         );
     }
@@ -848,6 +1002,77 @@ mod tests {
 
         let ack = rx.recv().await.expect("joined ack should arrive");
         assert!(matches!(ack, ServerMessage::Joined { group } if group == "binary.room"));
+    }
+
+    #[tokio::test]
+    #[ignore = "requires local socket bind permission in test environment"]
+    async fn negotiated_msgpack_connection_rejects_text_frame() {
+        let hub = WebSocketHub::new();
+        let app = websocket_router("/ws", hub);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("listener should bind");
+        let addr = listener.local_addr().expect("address should exist");
+
+        let server_task = tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+
+        let ws_url = format!("ws://{}/ws", addr);
+        let mut request = ws_url
+            .into_client_request()
+            .expect("client request should be built");
+        request.headers_mut().insert(
+            WS_PROTOCOL,
+            HeaderValue::from_static(WS_SUBPROTOCOL_MSGPACK_V1),
+        );
+
+        let (mut stream, response) = connect_async(request)
+            .await
+            .expect("websocket should connect");
+        let negotiated = response
+            .headers()
+            .get(WS_PROTOCOL)
+            .and_then(|v| v.to_str().ok());
+        assert_eq!(negotiated, Some(WS_SUBPROTOCOL_MSGPACK_V1));
+
+        let connected = stream
+            .next()
+            .await
+            .expect("connected frame should exist")
+            .expect("connected frame should be valid");
+        match connected {
+            TungsteniteMessage::Binary(payload) => {
+                let decoded: ServerMessage =
+                    rmp_serde::from_slice(&payload).expect("msgpack should decode");
+                assert!(matches!(decoded, ServerMessage::Connected { .. }));
+            }
+            _ => panic!("expected binary connected frame"),
+        }
+
+        stream
+            .send(TungsteniteMessage::Text("{\"type\":\"ping\"}".into()))
+            .await
+            .expect("text frame should send");
+
+        let mismatch = stream
+            .next()
+            .await
+            .expect("mismatch frame should exist")
+            .expect("mismatch frame should be valid");
+        match mismatch {
+            TungsteniteMessage::Binary(payload) => {
+                let decoded: ServerMessage =
+                    rmp_serde::from_slice(&payload).expect("msgpack should decode");
+                assert!(
+                    matches!(decoded, ServerMessage::Error { code, .. } if code == "frame_format_mismatch")
+                );
+            }
+            _ => panic!("expected binary mismatch error frame"),
+        }
+
+        let _ = stream.close(None).await;
+        server_task.abort();
     }
 
     #[tokio::test]
