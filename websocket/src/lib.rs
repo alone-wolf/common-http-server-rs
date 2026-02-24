@@ -8,8 +8,9 @@ pub use protocol::{ClientMessage, EventActor, ServerMessage};
 mod server;
 #[cfg(feature = "server")]
 pub use server::{
-    WebSocketAuthMode, WebSocketError, WebSocketHub, WebSocketHubConfig, websocket_handler,
-    websocket_router, websocket_router_with_auth,
+    WebSocketAuthMode, WebSocketConnectionInspection, WebSocketError, WebSocketGroupInspection,
+    WebSocketHub, WebSocketHubConfig, WebSocketHubInspection, websocket_handler, websocket_router,
+    websocket_router_with_auth,
 };
 
 #[cfg(feature = "client")]

@@ -19,6 +19,7 @@ use common_http_server_rs::{
     basic_auth_middleware, jwt_auth_middleware,
 };
 use futures_util::{SinkExt, StreamExt};
+use serde::Serialize;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -124,6 +125,30 @@ struct PeerEntry {
     sender: mpsc::Sender<ServerMessage>,
     auth_user: Option<AuthUser>,
     groups: HashSet<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct WebSocketGroupInspection {
+    pub group: String,
+    pub member_count: usize,
+    pub members: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct WebSocketConnectionInspection {
+    pub connection_id: String,
+    pub user_id: String,
+    pub username: String,
+    pub auth_type: String,
+    pub groups: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct WebSocketHubInspection {
+    pub total_connections: usize,
+    pub total_groups: usize,
+    pub groups: Vec<WebSocketGroupInspection>,
+    pub connections: Vec<WebSocketConnectionInspection>,
 }
 
 impl WebSocketHub {
@@ -391,6 +416,55 @@ impl WebSocketHub {
     pub async fn group_member_count(&self, group: &str) -> usize {
         let state = self.inner.read().await;
         state.groups.get(group).map_or(0, HashSet::len)
+    }
+
+    pub async fn inspect(&self) -> WebSocketHubInspection {
+        let state = self.inner.read().await;
+
+        let mut groups = state
+            .groups
+            .iter()
+            .map(|(group, members)| {
+                let mut members = members.iter().cloned().collect::<Vec<_>>();
+                members.sort();
+                WebSocketGroupInspection {
+                    group: group.clone(),
+                    member_count: members.len(),
+                    members,
+                }
+            })
+            .collect::<Vec<_>>();
+        groups.sort_by(|left, right| left.group.cmp(&right.group));
+
+        let mut connections = state
+            .peers
+            .iter()
+            .map(|(connection_id, peer)| {
+                let actor = peer
+                    .auth_user
+                    .as_ref()
+                    .map(event_actor_from_auth_user)
+                    .unwrap_or_else(|| anonymous_actor(connection_id));
+                let mut groups = peer.groups.iter().cloned().collect::<Vec<_>>();
+                groups.sort();
+
+                WebSocketConnectionInspection {
+                    connection_id: connection_id.clone(),
+                    user_id: actor.user_id,
+                    username: actor.username,
+                    auth_type: actor.auth_type,
+                    groups,
+                }
+            })
+            .collect::<Vec<_>>();
+        connections.sort_by(|left, right| left.connection_id.cmp(&right.connection_id));
+
+        WebSocketHubInspection {
+            total_connections: connections.len(),
+            total_groups: groups.len(),
+            groups,
+            connections,
+        }
     }
 }
 
@@ -770,6 +844,49 @@ mod tests {
 
         hub.leave_group(&connection_id, "chat.room").await.unwrap();
         assert_eq!(hub.group_member_count("chat.room").await, 0);
+    }
+
+    #[tokio::test]
+    async fn inspect_returns_group_and_connection_snapshot() {
+        let hub = WebSocketHub::new();
+        let (alice_id, mut alice_rx) = hub.register(Some(auth_user("alice"))).await;
+        let _ = alice_rx.recv().await;
+
+        let (anon_id, mut anon_rx) = hub.register(None).await;
+        let _ = anon_rx.recv().await;
+
+        hub.join_group(&alice_id, "room.alpha").await.unwrap();
+        hub.join_group(&anon_id, "room.alpha").await.unwrap();
+        hub.join_group(&anon_id, "room.beta").await.unwrap();
+
+        let snapshot = hub.inspect().await;
+        assert_eq!(snapshot.total_connections, 2);
+        assert_eq!(snapshot.total_groups, 2);
+
+        let groups = snapshot
+            .groups
+            .iter()
+            .map(|item| (item.group.as_str(), item.member_count))
+            .collect::<std::collections::HashMap<_, _>>();
+        assert_eq!(groups.get("room.alpha"), Some(&2usize));
+        assert_eq!(groups.get("room.beta"), Some(&1usize));
+
+        let alice = snapshot
+            .connections
+            .iter()
+            .find(|item| item.connection_id == alice_id)
+            .expect("alice connection should exist");
+        assert_eq!(alice.username, "alice");
+        assert_eq!(alice.auth_type, "api_key");
+
+        let anonymous = snapshot
+            .connections
+            .iter()
+            .find(|item| item.connection_id == anon_id)
+            .expect("anonymous connection should exist");
+        assert_eq!(anonymous.username, "anonymous");
+        assert_eq!(anonymous.auth_type, "none");
+        assert_eq!(anonymous.groups, vec!["room.alpha", "room.beta"]);
     }
 
     #[tokio::test]

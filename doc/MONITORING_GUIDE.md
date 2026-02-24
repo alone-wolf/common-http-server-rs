@@ -9,6 +9,7 @@ All docs index: `doc/README.md`.
 - **Prometheus Metrics Collection**: Comprehensive metrics collection with Prometheus format
 - **Request Statistics**: Track request counts, response times, and error rates
 - **Performance Monitoring Middleware**: Automatic request tracking and performance metrics
+- **Configurable Counting Scope**: `PerformanceMonitoringConfig` can exclude path prefixes from request counting
 - **Enhanced Health Checks**: Database, Redis, and external service health monitoring
 - **Health Safety Guards**: External target validation, per-request check cap, request timeout
 
@@ -41,6 +42,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     axum::serve(listener, app).await?;
     Ok(())
 }
+```
+
+### Use with Global Orchestrator (recommended for full apps)
+
+```rust
+use common_http_server_rs::{
+    AppBuilder, AppConfig, GlobalMonitoringConfig, MiddlewareOrchestrator, MonitoringState,
+    PerformanceMonitoringConfig,
+};
+
+let monitoring = MonitoringState::new();
+
+let app_builder = AppBuilder::new(AppConfig::default())
+    .route("/", axum::routing::get(|| async { "ok" }))
+    .with_orchestrator(
+        MiddlewareOrchestrator::new().with_monitoring_config(
+            monitoring.clone(),
+            GlobalMonitoringConfig::new().with_performance_config(
+                PerformanceMonitoringConfig::new()
+                    .exclude_request_count_path_prefix("/panel")
+                    .exclude_request_count_path_prefix("/monitor"),
+            ),
+        ),
+    );
 ```
 
 ## Available Endpoints

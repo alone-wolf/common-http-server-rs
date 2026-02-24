@@ -31,6 +31,13 @@ client
     .await?;
 ```
 
+服务端可通过 `hub.inspect()` 获取 inspection 快照（供运维面板使用）：
+
+```rust
+let snapshot = hub.inspect().await;
+println!("connections={}, groups={}", snapshot.total_connections, snapshot.total_groups);
+```
+
 连接帧格式在握手阶段确定：
 - 服务端支持子协议：`chs.v1.msgpack` / `msgpack` / `chs.v1.json` / `json`（优先 MessagePack）。
 - `.with_binary_messagepack()`（等价 `.force_msgpack()`）会声明 `chs.v1.msgpack, msgpack`，连接必须协商到 MessagePack。

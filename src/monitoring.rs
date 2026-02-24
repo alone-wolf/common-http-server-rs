@@ -17,7 +17,9 @@ use prometheus::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::future::Future;
 use std::net::IpAddr;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use sysinfo::System;
@@ -34,6 +36,43 @@ const HEALTH_DB_QUERY_TIMEOUT: Duration = Duration::from_secs(3);
 const ALLOW_RUNTIME_HEALTH_TARGETS_ENV: &str = "COMMON_HTTP_SERVER_RS_ALLOW_RUNTIME_HEALTH_TARGETS";
 const ALLOW_RUNTIME_HEALTH_TARGETS_ENV_LEGACY: &str =
     "COMMON_HTTP_SERVER_ALLOW_RUNTIME_HEALTH_TARGETS";
+const DEFAULT_EXCLUDED_REQUEST_COUNT_PATH_PREFIXES: &[&str] = &["/panel", "/monitor"];
+
+#[derive(Debug, Clone)]
+pub struct PerformanceMonitoringConfig {
+    pub excluded_request_count_path_prefixes: Vec<String>,
+}
+
+impl Default for PerformanceMonitoringConfig {
+    fn default() -> Self {
+        Self {
+            excluded_request_count_path_prefixes: DEFAULT_EXCLUDED_REQUEST_COUNT_PATH_PREFIXES
+                .iter()
+                .map(|prefix| prefix.to_string())
+                .collect(),
+        }
+    }
+}
+
+impl PerformanceMonitoringConfig {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn exclude_request_count_path_prefix(mut self, prefix: impl Into<String>) -> Self {
+        self.excluded_request_count_path_prefixes
+            .push(normalize_path_prefix(prefix.into()));
+        self
+    }
+
+    pub fn with_excluded_request_count_path_prefixes(mut self, prefixes: Vec<String>) -> Self {
+        self.excluded_request_count_path_prefixes = prefixes
+            .into_iter()
+            .map(normalize_path_prefix)
+            .collect::<Vec<_>>();
+        self
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct MetricsCollector {
@@ -422,10 +461,45 @@ pub async fn performance_monitoring_middleware(
     request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
+    run_performance_monitoring(
+        &state,
+        request,
+        next,
+        &PerformanceMonitoringConfig::default(),
+    )
+    .await
+}
+
+pub fn performance_monitoring_middleware_with_config(
+    state: MonitoringState,
+    config: PerformanceMonitoringConfig,
+) -> impl Fn(Request, Next) -> Pin<Box<dyn Future<Output = Result<Response, StatusCode>> + Send>>
++ Clone
++ Send
++ Sync
++ 'static {
+    move |request: Request, next: Next| {
+        let state = state.clone();
+        let config = config.clone();
+        Box::pin(async move { run_performance_monitoring(&state, request, next, &config).await })
+    }
+}
+
+async fn run_performance_monitoring(
+    state: &MonitoringState,
+    request: Request,
+    next: Next,
+    config: &PerformanceMonitoringConfig,
+) -> Result<Response, StatusCode> {
     let start_time = Instant::now();
     let method = request.method().to_string();
     let raw_path = request.uri().path().to_string();
     let path = metric_path_label(&request);
+    let skip_request_counting = should_skip_request_counting(
+        &raw_path,
+        &path,
+        &config.excluded_request_count_path_prefixes,
+    );
 
     state.metrics.read().await.increment_active_connections();
 
@@ -437,7 +511,7 @@ pub async fn performance_monitoring_middleware(
 
     let is_error = status_code >= 400;
 
-    {
+    if !skip_request_counting {
         let mut stats = state.stats.write().await;
         stats.record_request(is_error);
 
@@ -455,6 +529,7 @@ pub async fn performance_monitoring_middleware(
         method = %method,
         path = %raw_path,
         path_label = %path,
+        skipped_request_counting = skip_request_counting,
         status_code = %status_code,
         duration_ms = duration.as_millis(),
         "Request processed"
@@ -471,6 +546,48 @@ fn metric_path_label(request: &Request) -> String {
         .get::<MatchedPath>()
         .map(|matched_path| matched_path.as_str().to_string())
         .unwrap_or_else(|| UNMATCHED_PATH_LABEL.to_string())
+}
+
+fn should_skip_request_counting(
+    raw_path: &str,
+    matched_path: &str,
+    excluded_prefixes: &[String],
+) -> bool {
+    is_excluded_request_count_path_with_prefixes(raw_path, excluded_prefixes)
+        || is_excluded_request_count_path_with_prefixes(matched_path, excluded_prefixes)
+}
+
+fn is_excluded_request_count_path_with_prefixes(path: &str, prefixes: &[String]) -> bool {
+    prefixes
+        .iter()
+        .any(|prefix| path_has_prefix_segment(path, prefix))
+}
+
+fn path_has_prefix_segment(path: &str, prefix: &str) -> bool {
+    if prefix == "/" {
+        return true;
+    }
+
+    path.strip_prefix(prefix)
+        .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
+}
+
+fn normalize_path_prefix(prefix: String) -> String {
+    let trimmed = prefix.trim();
+    if trimmed.is_empty() {
+        return "/".to_string();
+    }
+    let with_leading = if trimmed.starts_with('/') {
+        trimmed.to_string()
+    } else {
+        format!("/{trimmed}")
+    };
+
+    if with_leading.len() > 1 && with_leading.ends_with('/') {
+        with_leading.trim_end_matches('/').to_string()
+    } else {
+        with_leading
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -979,6 +1096,123 @@ mod tests {
 
         let metrics_text = state.metrics.read().await.export_metrics().unwrap();
         assert!(metrics_text.contains("path=\"__unmatched__\""));
+    }
+
+    #[tokio::test]
+    async fn panel_requests_are_excluded_from_request_counting() {
+        let state = MonitoringState::new();
+        let app = Router::new()
+            .route("/panel/api/snapshot", get(ok_handler))
+            .layer(middleware::from_fn_with_state(
+                state.clone(),
+                performance_monitoring_middleware,
+            ));
+
+        let response = app
+            .oneshot(
+                HttpRequest::builder()
+                    .uri("/panel/api/snapshot")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let stats = state.stats.read().await;
+        assert_eq!(stats.total_requests(), 0);
+        assert_eq!(stats.error_requests(), 0);
+
+        let metrics_text = state.metrics.read().await.export_metrics().unwrap();
+        assert!(!metrics_text.contains("path=\"/panel/api/snapshot\""));
+    }
+
+    #[test]
+    fn excluded_request_count_path_detection_is_precise() {
+        let defaults = PerformanceMonitoringConfig::default().excluded_request_count_path_prefixes;
+        assert!(is_excluded_request_count_path_with_prefixes(
+            "/panel", &defaults
+        ));
+        assert!(is_excluded_request_count_path_with_prefixes(
+            "/panel/api/snapshot",
+            &defaults
+        ));
+        assert!(is_excluded_request_count_path_with_prefixes(
+            "/monitor", &defaults
+        ));
+        assert!(is_excluded_request_count_path_with_prefixes(
+            "/monitor/metrics",
+            &defaults
+        ));
+        assert!(!is_excluded_request_count_path_with_prefixes(
+            "/panelized",
+            &defaults
+        ));
+        assert!(!is_excluded_request_count_path_with_prefixes(
+            "/monitoring",
+            &defaults
+        ));
+        assert!(!is_excluded_request_count_path_with_prefixes(
+            "/api/panel",
+            &defaults
+        ));
+    }
+
+    #[tokio::test]
+    async fn monitor_requests_are_excluded_from_request_counting() {
+        let state = MonitoringState::new();
+        let app = Router::new()
+            .route("/monitor/metrics", get(ok_handler))
+            .layer(middleware::from_fn_with_state(
+                state.clone(),
+                performance_monitoring_middleware,
+            ));
+
+        let response = app
+            .oneshot(
+                HttpRequest::builder()
+                    .uri("/monitor/metrics")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let stats = state.stats.read().await;
+        assert_eq!(stats.total_requests(), 0);
+        assert_eq!(stats.error_requests(), 0);
+
+        let metrics_text = state.metrics.read().await.export_metrics().unwrap();
+        assert!(!metrics_text.contains("path=\"/monitor/metrics\""));
+    }
+
+    #[tokio::test]
+    async fn configurable_excluded_prefixes_are_applied() {
+        let state = MonitoringState::new();
+        let app = Router::new()
+            .route("/ops/metrics", get(ok_handler))
+            .layer(middleware::from_fn(
+                performance_monitoring_middleware_with_config(
+                    state.clone(),
+                    PerformanceMonitoringConfig::new()
+                        .with_excluded_request_count_path_prefixes(vec!["/ops".to_string()]),
+                ),
+            ));
+
+        let response = app
+            .oneshot(
+                HttpRequest::builder()
+                    .uri("/ops/metrics")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let stats = state.stats.read().await;
+        assert_eq!(stats.total_requests(), 0);
     }
 
     #[tokio::test]

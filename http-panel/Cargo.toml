@@ -1,0 +1,22 @@
+[package]
+name = "http-panel"
+version = "0.1.0"
+edition = "2024"
+description = "Web panel routes for HTTP metrics and WebSocket server inspection"
+readme = "README.md"
+repository = "https://github.com/alone-wolf/common-http-server-rs"
+homepage = "https://github.com/alone-wolf/common-http-server-rs"
+documentation = "https://docs.rs/http-panel"
+license = "MIT"
+keywords = ["axum", "panel", "monitoring", "websocket", "inspection"]
+categories = ["web-programming::http-server", "network-programming"]
+
+[dependencies]
+axum = "0.8"
+chrono = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+common-http-server-rs = { path = "..", version = "0.1.0" }
+websocket = { path = "../websocket", version = "0.1.0", default-features = false, features = ["server"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

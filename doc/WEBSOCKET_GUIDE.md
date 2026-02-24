@@ -52,6 +52,19 @@ client
     .await?;
 ```
 
+## Server Inspection（用于面板/运维）
+
+`WebSocketHub` 提供运行时 inspection 快照，可用于后台面板（例如 `http-panel`）：
+
+```rust
+let snapshot = hub.inspect().await;
+println!(
+    "connections={}, groups={}",
+    snapshot.total_connections,
+    snapshot.total_groups
+);
+```
+
 ## Client -> Server 消息结构
 
 ### 1) 加入分组

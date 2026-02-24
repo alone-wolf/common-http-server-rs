@@ -3,6 +3,7 @@ pub mod client_ip;
 pub mod cors;
 pub mod health;
 pub mod logging;
+pub mod middleware_orchestrator;
 pub mod response;
 pub mod runtime_ui;
 pub mod server;
@@ -13,6 +14,10 @@ pub use health::health_check;
 pub use logging::{
     LogFormat, LoggingConfig, REQUEST_ID_HEADER, RequestId, current_log_filter, init_logging,
     structured_logging_middleware, update_log_filter,
+};
+pub use middleware_orchestrator::{
+    AuthRule, GlobalAuthConfig, GlobalAuthFallback, GlobalAuthMode, GlobalMonitoringConfig,
+    MiddlewareOrchestrator, PathScope,
 };
 pub use response::{ApiResponse, HealthResponse};
 pub use runtime_ui::{

@@ -203,7 +203,8 @@ impl Server {
 
     /// 启动服务器
     pub async fn start(self) -> Result<(), Box<dyn std::error::Error>> {
-        let (app, app_config, startup_validations) = self.app_builder.into_parts();
+        let (app, app_config, startup_validations, middleware_orchestrator) =
+            self.app_builder.into_parts();
 
         // 初始化日志系统
         if app_config.enable_logging {
@@ -225,7 +226,15 @@ impl Server {
         }
 
         // 构建应用
-        let app = apply_app_layers(app, &app_config);
+        let app = match middleware_orchestrator {
+            Some(orchestrator) => {
+                orchestrator
+                    .validate()
+                    .map_err(|e| format!("Invalid orchestrator configuration: {}", e))?;
+                orchestrator.apply(app, &app_config)
+            }
+            None => apply_app_layers(app, &app_config),
+        };
 
         let addr = self
             .server_config

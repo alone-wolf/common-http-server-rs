@@ -251,9 +251,7 @@ pub fn init_logging(config: &LoggingConfig) -> Result<(), Box<dyn std::error::Er
     let terminal_layer = tracing_subscriber::fmt::layer()
         .with_writer(terminal_writer)
         .with_target(config.include_target)
-        .with_thread_ids(config.include_thread_ids)
-        .with_file(config.include_source_location)
-        .with_line_number(config.include_source_location);
+        .with_thread_ids(config.include_thread_ids);
 
     let init_result = match config.format {
         LogFormat::Json => {
@@ -271,18 +269,33 @@ pub fn init_logging(config: &LoggingConfig) -> Result<(), Box<dyn std::error::Er
                 tracing_subscriber::registry()
                     .with(reloadable_filter)
                     .with(UiLogLayer)
-                    .with(terminal_layer.json())
+                    .with(
+                        terminal_layer
+                            .json()
+                            .with_file(config.include_source_location)
+                            .with_line_number(config.include_source_location),
+                    )
                     .with(json_backend_layer)
                     .try_init()
             } else {
                 tracing_subscriber::registry()
                     .with(reloadable_filter)
                     .with(UiLogLayer)
-                    .with(terminal_layer.json())
+                    .with(
+                        terminal_layer
+                            .json()
+                            .with_file(config.include_source_location)
+                            .with_line_number(config.include_source_location),
+                    )
                     .try_init()
             }
         }
         LogFormat::Pretty => {
+            let pretty_format = tracing_subscriber::fmt::format()
+                .pretty()
+                .with_target(config.include_target)
+                .with_thread_ids(config.include_thread_ids)
+                .with_source_location(config.include_source_location);
             if config.enable_json_backend {
                 let json_writer = build_json_backend_writer(&config.json_backend_path)?;
                 let json_backend_layer = tracing_subscriber::fmt::layer()
@@ -297,14 +310,14 @@ pub fn init_logging(config: &LoggingConfig) -> Result<(), Box<dyn std::error::Er
                 tracing_subscriber::registry()
                     .with(reloadable_filter)
                     .with(UiLogLayer)
-                    .with(terminal_layer.pretty())
+                    .with(terminal_layer.event_format(pretty_format))
                     .with(json_backend_layer)
                     .try_init()
             } else {
                 tracing_subscriber::registry()
                     .with(reloadable_filter)
                     .with(UiLogLayer)
-                    .with(terminal_layer.pretty())
+                    .with(terminal_layer.event_format(pretty_format))
                     .try_init()
             }
         }

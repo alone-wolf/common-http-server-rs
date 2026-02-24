@@ -5,6 +5,7 @@
 
 use crate::core::{
     health::{detailed_health_check, health_check},
+    middleware_orchestrator::MiddlewareOrchestrator,
     response::ApiResponse,
     server::{AppConfig, ConfigError, StartupValidation},
 };
@@ -17,6 +18,7 @@ pub struct AppBuilder {
     router: Router,
     app_config: AppConfig,
     startup_validations: Vec<StartupValidation>,
+    middleware_orchestrator: Option<MiddlewareOrchestrator>,
 }
 
 impl AppBuilder {
@@ -29,6 +31,7 @@ impl AppBuilder {
                 .route("/api/v1/status", get(health_check)),
             app_config,
             startup_validations: Vec::new(),
+            middleware_orchestrator: None,
         }
     }
 
@@ -65,6 +68,12 @@ impl AppBuilder {
             + 'static,
     {
         self.router = self.router.layer(axum::middleware::from_fn(middleware));
+        self
+    }
+
+    /// Attach a global middleware orchestrator to this app.
+    pub fn with_orchestrator(mut self, orchestrator: MiddlewareOrchestrator) -> Self {
+        self.middleware_orchestrator = Some(orchestrator);
         self
     }
 
@@ -138,11 +147,19 @@ impl AppBuilder {
     /// Consume the builder and return:
     /// - the finalized router (with fallback route)
     /// - the app runtime configuration used by `Server`
-    pub(crate) fn into_parts(self) -> (Router, AppConfig, Vec<StartupValidation>) {
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        Router,
+        AppConfig,
+        Vec<StartupValidation>,
+        Option<MiddlewareOrchestrator>,
+    ) {
         (
             self.router.with_state(()).fallback(fallback_handler),
             self.app_config,
             self.startup_validations,
+            self.middleware_orchestrator,
         )
     }
 }
@@ -158,6 +175,7 @@ async fn fallback_handler() -> (StatusCode, ApiResponse<()>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::middleware_orchestrator::MiddlewareOrchestrator;
     use axum::body::Body;
     use tower::ServiceExt;
 
@@ -167,7 +185,7 @@ mod tests {
 
     #[tokio::test]
     async fn keeps_custom_routes_when_building() {
-        let (app, _, _) = AppBuilder::new(AppConfig::default())
+        let (app, _, _, _) = AppBuilder::new(AppConfig::default())
             .route("/custom", get(custom_handler))
             .into_parts();
 
@@ -186,10 +204,19 @@ mod tests {
 
     #[test]
     fn keeps_startup_validations() {
-        let (_, _, startup_validations) = AppBuilder::new(AppConfig::default())
+        let (_, _, startup_validations, _) = AppBuilder::new(AppConfig::default())
             .startup_validation(|| Ok(()))
             .into_parts();
 
         assert_eq!(startup_validations.len(), 1);
+    }
+
+    #[test]
+    fn keeps_middleware_orchestrator() {
+        let (_, _, _, middleware_orchestrator) = AppBuilder::new(AppConfig::default())
+            .with_orchestrator(MiddlewareOrchestrator::new())
+            .into_parts();
+
+        assert!(middleware_orchestrator.is_some());
     }
 }

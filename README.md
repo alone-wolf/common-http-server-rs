@@ -7,7 +7,7 @@
 - 监控与健康检查（Prometheus 指标、性能中间件、健康探针）
 - 可选运行时终端 UI（TUI）
 
-> WebSocket 能力已拆分到 workspace 子 crate：`websocket`。
+> 扩展能力已拆分到 workspace 子 crate：`websocket`、`http-panel`。
 
 ## 快速开始
 
@@ -25,6 +25,7 @@ cargo run --example level2_app_config
 cargo run --example level3_security_and_monitoring
 cargo run --example level4_graceful_shutdown
 cargo run --example level5_terminal_ui
+cargo run --example level6_websocket_http_panel
 cargo run --example jwt_with_client --features external-health
 
 # WebSocket 示例（workspace 子 crate）
@@ -32,17 +33,53 @@ cargo run -p websocket --example websocket_group_events
 cargo run -p websocket --example websocket_cs_state_dashboard
 ```
 
+## 全局中间件编排器（推荐）
+
+`MiddlewareOrchestrator` 用于把监控、防护、全局鉴权与应用级 runtime layer（logging/tracing/cors）统一在一个地方挂载，避免子路由重复或漏挂。
+
+```rust
+use common_http_server_rs::{
+    AppBuilder, AppConfig, GlobalAuthConfig, GlobalAuthMode, GlobalMonitoringConfig,
+    MiddlewareOrchestrator, MonitoringState, PathScope, PerformanceMonitoringConfig, auth_presets,
+};
+
+let monitoring = MonitoringState::new();
+let auth_config_a = auth_presets::development().shared();
+let auth_config_b = auth_presets::development().shared();
+
+let app_builder = AppBuilder::new(AppConfig::default())
+    .route("/", axum::routing::get(|| async { "ok" }))
+    .with_orchestrator(
+        MiddlewareOrchestrator::new()
+            .with_monitoring_config(
+                monitoring.clone(),
+                GlobalMonitoringConfig::new().with_performance_config(
+                    PerformanceMonitoringConfig::new()
+                        .exclude_request_count_path_prefix("/panel")
+                        .exclude_request_count_path_prefix("/monitor"),
+                ),
+            )
+            .with_auth_rules(vec![
+                GlobalAuthConfig::new(auth_config_a.clone(), GlobalAuthMode::ApiKey)
+                    .with_scope(PathScope::all().include_prefix("/api")),
+                GlobalAuthConfig::new(auth_config_b.clone(), GlobalAuthMode::ApiKey)
+                    .with_scope(PathScope::all().include_prefix("/realtime")),
+            ]),
+    );
+```
+
 ## 通过 Git 引入依赖（完整写法）
 
-本仓库可被其他项目以两种方式引入：
+本仓库可被其他项目以三种方式引入：
 - 主 crate：`common-http-server-rs`
 - workspace 子 crate：`websocket`
+- workspace 子 crate：`http-panel`
 
 ### Cargo.toml 可配置项说明
 
 - `git`：Git 仓库地址（必填）
 - `branch` / `tag` / `rev`：版本定位（3 选 1）
-- `package`：当仓库中有多个 package 时指定目标包名（引入 `websocket` 时必填）
+- `package`：当仓库中有多个 package 时指定目标包名（引入 `websocket` / `http-panel` 时必填）
 - `features`：启用功能开关
 - `default-features`：是否启用默认 feature
 - `optional`：作为可选依赖引入
@@ -82,7 +119,16 @@ websocket = { git = "https://github.com/alone-wolf/common-http-server-rs.git", p
 websocket = { git = "https://github.com/alone-wolf/common-http-server-rs.git", package = "websocket", branch = "main", default-features = false, features = ["server"] }
 ```
 
-### 3) 同时引入主 crate + websocket（并重命名依赖）
+### 3) 仅引入 http-panel 子 crate
+
+```toml
+[dependencies]
+common-http-server-rs = { git = "https://github.com/alone-wolf/common-http-server-rs.git", branch = "main" }
+websocket = { git = "https://github.com/alone-wolf/common-http-server-rs.git", package = "websocket", branch = "main", default-features = false, features = ["server"] }
+http_panel = { git = "https://github.com/alone-wolf/common-http-server-rs.git", package = "http-panel", branch = "main" }
+```
+
+### 4) 同时引入主 crate + websocket（并重命名依赖）
 
 ```toml
 [dependencies]
@@ -90,31 +136,34 @@ common_http = { package = "common-http-server-rs", git = "https://github.com/alo
 common_ws = { package = "websocket", git = "https://github.com/alone-wolf/common-http-server-rs.git", branch = "main", default-features = false, features = ["client"] }
 ```
 
-### 4) 使用 commit 锁定（rev）
+### 5) 使用 commit 锁定（rev）
 
 ```toml
 [dependencies]
 common-http-server-rs = { git = "https://github.com/alone-wolf/common-http-server-rs.git", rev = "COMMIT_SHA" }
 websocket = { git = "https://github.com/alone-wolf/common-http-server-rs.git", package = "websocket", rev = "COMMIT_SHA", default-features = false, features = ["server"] }
+http_panel = { git = "https://github.com/alone-wolf/common-http-server-rs.git", package = "http-panel", rev = "COMMIT_SHA" }
 ```
 
-### 5) 跟踪开发分支（branch）
+### 6) 跟踪开发分支（branch）
 
 ```toml
 [dependencies]
 common-http-server-rs = { git = "https://github.com/alone-wolf/common-http-server-rs.git", branch = "main" }
 ```
 
-### 6) 作为可选依赖（optional）
+### 7) 作为可选依赖（optional）
 
 ```toml
 [dependencies]
 common-http-server-rs = { git = "https://github.com/alone-wolf/common-http-server-rs.git", branch = "main", optional = true }
 websocket = { git = "https://github.com/alone-wolf/common-http-server-rs.git", package = "websocket", branch = "main", default-features = false, features = ["client"], optional = true }
+http_panel = { git = "https://github.com/alone-wolf/common-http-server-rs.git", package = "http-panel", branch = "main", optional = true }
 
 [features]
 with-http = ["dep:common-http-server-rs"]
 with-ws-client = ["dep:websocket"]
+with-http-panel = ["dep:http_panel"]
 ```
 
 ### 代码导入方式
@@ -124,6 +173,7 @@ crate 名中的 `-` 在代码里会变为 `_`：
 ```rust
 use common_http_server_rs::{AppBuilder, AppConfig, Server, ServerConfig};
 use websocket::WebSocketClient;
+use http_panel::panel_routes;
 ```
 
 ## 项目结构
@@ -131,6 +181,7 @@ use websocket::WebSocketClient;
 - `src/`：库与默认二进制入口
 - `examples/`：分层示例（从基础到安全/监控/UI）
 - `websocket/`：WebSocket 子 crate（feature: server/client/full）
+- `http-panel/`：HTTP 面板子 crate（监控面板 + WebSocket inspection）
 - `doc/`：详细指南（认证、防护、监控、CORS、安全）
 - `Prompts.md`：面向 AI 的提示词模板与任务脚手架
 
@@ -143,7 +194,10 @@ use websocket::WebSocketClient;
 - `doc/PROTECTION_GUIDE.md`
 - `doc/MONITORING_GUIDE.md`
 - `doc/WEBSOCKET_GUIDE.md`
+- `doc/HTTP_PANEL_GUIDE.md`
 - `doc/SECURITY_NOTES.md`
+- `doc/FRAMEWORK_ROADMAP.md`
+- `doc/ARCHITECTURE_REDESIGN.md`
 
 ## 给 AI/Agent 的使用说明（重点）
 
@@ -178,3 +232,6 @@ cargo check --examples --all-features
 - `server`：WebSocket server/group/event 能力（依赖主 crate 的认证中间件）
 - `client`：异步 WebSocket 客户端（JSON + MessagePack，含子协议协商）
 - `full`：默认开启（`server` + `client`）
+
+`http-panel`：
+- 无 feature 开关；用于挂载 Web 面板路由（HTTP 统计 + 可选 WebSocket inspection）

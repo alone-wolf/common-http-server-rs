@@ -16,10 +16,11 @@ exclude = [
     "logs/**",
     ".idea/**",
     "websocket/**",
+    "http-panel/**",
 ]
 
 [workspace]
-members = [".", "websocket"]
+members = [".", "websocket", "http-panel"]
 resolver = "2"
 
 [dependencies]
@@ -61,3 +62,7 @@ database-health = ["sqlx"]
 redis-health = ["redis"]
 external-health = ["reqwest"]
 full-health = ["database-health", "redis-health", "external-health"]
+
+[dev-dependencies]
+websocket = { path = "websocket", default-features = false, features = ["server"] }
+http_panel = { package = "http-panel", path = "http-panel" }

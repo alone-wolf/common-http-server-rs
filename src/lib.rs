@@ -13,13 +13,15 @@ pub mod protection;
 
 // Re-export core modules
 pub use core::{
-    ACTION_ITEMS, AboutInfo, ActionEvent, ActionKind, ApiResponse, AppBuilder, AppConfig,
-    ConfigError, CorsConfig, HealthResponse, LogEntry, LogFormat, LogLevel, LoggingConfig,
-    REQUEST_ID_HEADER, RequestId, RuntimeTab, RuntimeUiActionHandler, RuntimeUiActionStream,
-    RuntimeUiConfig, RuntimeUiError, RuntimeUiHandle, RuntimeUiRuntime, RuntimeUiService,
-    RuntimeUiServiceConfig, Server, ServerConfig, StatusSnapshot, UiStateUpdate, cors::presets,
-    current_log_filter, health_check, init_logging, spawn_runtime_ui, start_terminal_ui_simple,
-    start_terminal_ui_with_monitoring, structured_logging_middleware, update_log_filter,
+    ACTION_ITEMS, AboutInfo, ActionEvent, ActionKind, ApiResponse, AppBuilder, AppConfig, AuthRule,
+    ConfigError, CorsConfig, GlobalAuthConfig, GlobalAuthFallback, GlobalAuthMode,
+    GlobalMonitoringConfig, HealthResponse, LogEntry, LogFormat, LogLevel, LoggingConfig,
+    MiddlewareOrchestrator, PathScope, REQUEST_ID_HEADER, RequestId, RuntimeTab,
+    RuntimeUiActionHandler, RuntimeUiActionStream, RuntimeUiConfig, RuntimeUiError,
+    RuntimeUiHandle, RuntimeUiRuntime, RuntimeUiService, RuntimeUiServiceConfig, Server,
+    ServerConfig, StatusSnapshot, UiStateUpdate, cors::presets, current_log_filter, health_check,
+    init_logging, spawn_runtime_ui, start_terminal_ui_simple, start_terminal_ui_with_monitoring,
+    structured_logging_middleware, update_log_filter,
 };
 
 // Re-export auth modules
@@ -53,8 +55,9 @@ pub use protection::{
 // Re-export monitoring modules
 pub use monitoring::{
     HealthCheckConfig, HealthCheckResult, HealthStatus, MetricsCollector, MonitoringInfo,
-    MonitoringState, RequestStats, SharedMetrics, SharedStats, enhanced_health_check,
-    metrics_endpoint, monitoring_info_endpoint, performance_monitoring_middleware,
+    MonitoringState, PerformanceMonitoringConfig, RequestStats, SharedMetrics, SharedStats,
+    enhanced_health_check, metrics_endpoint, monitoring_info_endpoint,
+    performance_monitoring_middleware, performance_monitoring_middleware_with_config,
     setup_metrics_recorder,
 };
 
