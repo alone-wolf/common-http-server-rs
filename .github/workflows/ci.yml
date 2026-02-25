@@ -35,5 +35,11 @@ jobs:
       - name: Test workspace
         run: cargo test --workspace
 
+      - name: Test workspace (all features)
+        run: cargo test --workspace --all-features
+
+      - name: Check examples (all features)
+        run: cargo check --workspace --examples --all-features
+
       - name: Clippy
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings

@@ -18,9 +18,11 @@
    跨域配置与常见误区。
 8. `SECURITY_NOTES.md`  
    生产安全基线与硬化建议（强烈建议上线前阅读）。
-9. `FRAMEWORK_ROADMAP.md`  
+9. `PUBLISHING.md`  
+   发布流程、检查清单、Git 与 crates.io 发布策略。
+10. `FRAMEWORK_ROADMAP.md`  
    框架发展路径与阶段能力矩阵。
-10. `ARCHITECTURE_REDESIGN.md`  
+11. `ARCHITECTURE_REDESIGN.md`  
    面向未来构想的模块重构与组合设计建议。
 
 ## Quick Run

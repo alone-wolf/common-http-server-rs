@@ -199,6 +199,7 @@ use http_panel::panel_routes;
 - `doc/WEBSOCKET_GUIDE.md`
 - `doc/HTTP_PANEL_GUIDE.md`
 - `doc/SECURITY_NOTES.md`
+- `doc/PUBLISHING.md`
 - `doc/FRAMEWORK_ROADMAP.md`
 - `doc/ARCHITECTURE_REDESIGN.md`
 

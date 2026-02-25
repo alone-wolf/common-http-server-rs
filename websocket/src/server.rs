@@ -632,31 +632,35 @@ async fn websocket_session(
     while let Some(frame_result) = receiver.next().await {
         match frame_result {
             Ok(Message::Text(text)) => {
-                if initial_frame_format == WebSocketFrameFormat::TextJson {
-                    process_client_text_frame(&hub, &connection_id, &text).await;
-                } else {
+                if let Some(mismatch_message) =
+                    frame_format_mismatch_message(initial_frame_format, true)
+                {
                     send_ws_error(
                         &hub,
                         &connection_id,
                         "frame_format_mismatch",
-                        "Connection negotiated MessagePack binary frames but received text frame",
+                        mismatch_message,
                     )
                     .await;
                     break;
+                } else {
+                    process_client_text_frame(&hub, &connection_id, &text).await;
                 }
             }
             Ok(Message::Binary(payload)) => {
-                if initial_frame_format == WebSocketFrameFormat::BinaryMessagePack {
-                    process_client_binary_frame(&hub, &connection_id, &payload).await;
-                } else {
+                if let Some(mismatch_message) =
+                    frame_format_mismatch_message(initial_frame_format, false)
+                {
                     send_ws_error(
                         &hub,
                         &connection_id,
                         "frame_format_mismatch",
-                        "Connection negotiated JSON text frames but received binary frame",
+                        mismatch_message,
                     )
                     .await;
                     break;
+                } else {
+                    process_client_binary_frame(&hub, &connection_id, &payload).await;
                 }
             }
             Ok(Message::Ping(_)) | Ok(Message::Pong(_)) => {}
@@ -681,6 +685,21 @@ fn frame_format_from_subprotocol(protocol: Option<&str>) -> WebSocketFrameFormat
         Some(token) if is_msgpack_subprotocol(token) => WebSocketFrameFormat::BinaryMessagePack,
         Some(token) if is_json_subprotocol(token) => WebSocketFrameFormat::TextJson,
         _ => WebSocketFrameFormat::TextJson,
+    }
+}
+
+fn frame_format_mismatch_message(
+    negotiated_format: WebSocketFrameFormat,
+    incoming_is_text: bool,
+) -> Option<&'static str> {
+    match (negotiated_format, incoming_is_text) {
+        (WebSocketFrameFormat::TextJson, false) => {
+            Some("Connection negotiated JSON text frames but received binary frame")
+        }
+        (WebSocketFrameFormat::BinaryMessagePack, true) => {
+            Some("Connection negotiated MessagePack binary frames but received text frame")
+        }
+        _ => None,
     }
 }
 
@@ -1102,6 +1121,22 @@ mod tests {
         assert_eq!(
             frame_format_from_subprotocol(Some("messagepack")),
             WebSocketFrameFormat::TextJson
+        );
+    }
+
+    #[test]
+    fn mismatch_message_for_text_negotiation_rejects_binary_frames() {
+        assert_eq!(
+            frame_format_mismatch_message(WebSocketFrameFormat::TextJson, false),
+            Some("Connection negotiated JSON text frames but received binary frame")
+        );
+    }
+
+    #[test]
+    fn mismatch_message_for_msgpack_negotiation_rejects_text_frames() {
+        assert_eq!(
+            frame_format_mismatch_message(WebSocketFrameFormat::BinaryMessagePack, true),
+            Some("Connection negotiated MessagePack binary frames but received text frame")
         );
     }
 
