@@ -1,16 +1,22 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+#[cfg(any(feature = "server", feature = "client"))]
 pub const WS_SUBPROTOCOL_MSGPACK_V1: &str = "chs.v1.msgpack";
+#[cfg(any(feature = "server", feature = "client"))]
 pub const WS_SUBPROTOCOL_JSON_V1: &str = "chs.v1.json";
+#[cfg(any(feature = "server", feature = "client"))]
 pub const WS_SUBPROTOCOL_MSGPACK_LEGACY: &str = "msgpack";
+#[cfg(any(feature = "server", feature = "client"))]
 pub const WS_SUBPROTOCOL_JSON_LEGACY: &str = "json";
 
+#[cfg(any(feature = "server", feature = "client"))]
 pub fn is_msgpack_subprotocol(value: &str) -> bool {
     value.eq_ignore_ascii_case(WS_SUBPROTOCOL_MSGPACK_V1)
         || value.eq_ignore_ascii_case(WS_SUBPROTOCOL_MSGPACK_LEGACY)
 }
 
+#[cfg(any(feature = "server", feature = "client"))]
 pub fn is_json_subprotocol(value: &str) -> bool {
     value.eq_ignore_ascii_case(WS_SUBPROTOCOL_JSON_V1)
         || value.eq_ignore_ascii_case(WS_SUBPROTOCOL_JSON_LEGACY)
