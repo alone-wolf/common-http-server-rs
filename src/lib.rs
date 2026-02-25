@@ -13,10 +13,10 @@ pub mod protection;
 
 // Re-export core modules
 pub use core::{
-    ACTION_ITEMS, AboutInfo, ActionEvent, ActionKind, ApiResponse, AppBuilder, AppConfig, AuthRule,
-    ConfigError, CorsConfig, GlobalAuthConfig, GlobalAuthFallback, GlobalAuthMode,
-    GlobalMonitoringConfig, HealthResponse, LogEntry, LogFormat, LogLevel, LoggingConfig,
-    MiddlewareOrchestrator, PathScope, REQUEST_ID_HEADER, RequestId, RuntimeTab,
+    ACTION_ITEMS, AboutInfo, ActionEvent, ActionKind, ApiResponse, AppBuilder, AppConfig,
+    AuthRealm, AuthRule, ConfigError, CorsConfig, GlobalAuthConfig, GlobalAuthFallback,
+    GlobalAuthMode, GlobalMonitoringConfig, HealthResponse, LogEntry, LogFormat, LogLevel,
+    LoggingConfig, MiddlewareOrchestrator, PathScope, REQUEST_ID_HEADER, RequestId, RuntimeTab,
     RuntimeUiActionHandler, RuntimeUiActionStream, RuntimeUiConfig, RuntimeUiError,
     RuntimeUiHandle, RuntimeUiRuntime, RuntimeUiService, RuntimeUiServiceConfig, Server,
     ServerConfig, StatusSnapshot, UiStateUpdate, cors::presets, current_log_filter, health_check,

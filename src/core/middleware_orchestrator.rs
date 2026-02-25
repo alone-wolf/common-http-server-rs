@@ -20,6 +20,7 @@ use axum::{
     response::Response,
 };
 use std::collections::HashSet;
+use tracing::debug;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GlobalAuthMode {
@@ -128,6 +129,9 @@ impl GlobalAuthConfig {
 }
 
 pub type AuthRule = GlobalAuthConfig;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuthRealm(pub String);
 
 #[derive(Debug, Clone, Default)]
 pub struct GlobalMonitoringConfig {
@@ -278,14 +282,23 @@ struct ScopedAuthState {
 
 async fn scoped_auth_middleware(
     State(state): State<ScopedAuthState>,
-    request: Request,
+    mut request: Request,
     next: Next,
 ) -> Result<Response, AuthError> {
     let path = request.uri().path().to_string();
     let matched_rule = state.rules.iter().find(|rule| rule.scope.matches(&path));
 
     if let Some(rule) = matched_rule {
-        return match rule.mode {
+        let realm = rule.realm.clone();
+        request.extensions_mut().insert(AuthRealm(realm.clone()));
+        debug!(
+            path = %path,
+            realm = %realm,
+            mode = ?rule.mode,
+            "Scoped auth rule matched"
+        );
+
+        let mut response = match rule.mode {
             GlobalAuthMode::Basic => {
                 basic_auth_middleware(State(rule.auth_config.clone()), request, next).await
             }
@@ -295,7 +308,9 @@ async fn scoped_auth_middleware(
             GlobalAuthMode::Jwt => {
                 jwt_auth_middleware(State(rule.auth_config.clone()), request, next).await
             }
-        };
+        }?;
+        response.extensions_mut().insert(AuthRealm(realm));
+        return Ok(response);
     }
 
     match state.fallback {
@@ -354,7 +369,8 @@ mod tests {
     use crate::auth::presets;
     use axum::{
         Router,
-        body::Body,
+        body::{Body, to_bytes},
+        extract::Extension,
         http::{Request as HttpRequest, StatusCode},
         routing::get,
     };
@@ -362,6 +378,10 @@ mod tests {
 
     async fn ok_handler() -> &'static str {
         "ok"
+    }
+
+    async fn realm_handler(Extension(realm): Extension<AuthRealm>) -> String {
+        realm.0
     }
 
     fn auth_with_api_key(api_key: &str) -> SharedAuthConfig {
@@ -465,6 +485,43 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(secure_auth_resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn matched_auth_rule_realm_is_available_to_handlers_and_response_extensions() {
+        let auth = auth_with_api_key("tenant-a-key");
+
+        let app = MiddlewareOrchestrator::new()
+            .with_app_runtime_layers(false)
+            .with_auth_rule(
+                AuthRule::new(auth, GlobalAuthMode::ApiKey)
+                    .with_realm("tenant-a")
+                    .with_scope(PathScope::all().include_prefix("/tenant-a")),
+            )
+            .apply(
+                Router::new().route("/tenant-a/realm", get(realm_handler)),
+                &AppConfig::default(),
+            );
+
+        let response = app
+            .oneshot(
+                HttpRequest::builder()
+                    .uri("/tenant-a/realm")
+                    .header("authorization", "Bearer tenant-a-key")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.extensions().get::<AuthRealm>(),
+            Some(&AuthRealm("tenant-a".to_string()))
+        );
+
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        assert_eq!(std::str::from_utf8(&body).unwrap(), "tenant-a");
     }
 
     #[tokio::test]

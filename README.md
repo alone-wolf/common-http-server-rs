@@ -119,7 +119,10 @@ websocket = { git = "https://github.com/alone-wolf/common-http-server-rs.git", p
 websocket = { git = "https://github.com/alone-wolf/common-http-server-rs.git", package = "websocket", branch = "main", default-features = false, features = ["server"] }
 ```
 
-### 3) 仅引入 http-panel 子 crate
+### 3) 引入 http-panel（并显式声明其上游类型依赖）
+
+`http-panel` 的 `HttpPanelState` 通常会组合 `MonitoringState`（来自主 crate）和 `WebSocketHub`（来自 websocket crate），
+因此实际接入时通常会同时声明这三个依赖：
 
 ```toml
 [dependencies]

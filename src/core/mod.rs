@@ -16,8 +16,8 @@ pub use logging::{
     structured_logging_middleware, update_log_filter,
 };
 pub use middleware_orchestrator::{
-    AuthRule, GlobalAuthConfig, GlobalAuthFallback, GlobalAuthMode, GlobalMonitoringConfig,
-    MiddlewareOrchestrator, PathScope,
+    AuthRealm, AuthRule, GlobalAuthConfig, GlobalAuthFallback, GlobalAuthMode,
+    GlobalMonitoringConfig, MiddlewareOrchestrator, PathScope,
 };
 pub use response::{ApiResponse, HealthResponse};
 pub use runtime_ui::{

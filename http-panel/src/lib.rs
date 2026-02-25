@@ -274,6 +274,7 @@ fn render_dashboard_html(config: &HttpPanelConfig) -> String {
 {raw_snapshot_section}
   <script>
     const panelBasePath = window.location.pathname.replace(/\/+$/, "") || "/";
+    const apiBasePath = panelBasePath === "/" ? "" : panelBasePath;
     const state = {{
       intervalMs: {refresh_interval_ms},
       paused: false,
@@ -363,7 +364,7 @@ fn render_dashboard_html(config: &HttpPanelConfig) -> String {
     async function refreshPanel() {{
       if (state.paused) return;
       try {{
-        const resp = await fetch(panelBasePath + "/api/snapshot", {{ cache: "no-store" }});
+        const resp = await fetch(apiBasePath + "/api/snapshot", {{ cache: "no-store" }});
         if (!resp.ok) throw new Error("HTTP " + resp.status);
         const data = await resp.json();
         renderSnapshot(data);
@@ -450,5 +451,9 @@ mod tests {
         let html = render_dashboard_html(&config);
         assert!(html.contains("<title>Ops &lt;Panel&gt;</title>"));
         assert!(!html.contains("id=\"snapshot\""));
+        assert!(
+            html.contains("const apiBasePath = panelBasePath === \"/\" ? \"\" : panelBasePath;")
+        );
+        assert!(html.contains("fetch(apiBasePath + \"/api/snapshot\""));
     }
 }
