@@ -68,12 +68,3 @@ pub async fn quick_start(port: u16) -> Result<(), Box<dyn std::error::Error>> {
     let server = Server::new(server_config, app_builder);
     server.start().await
 }
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        let result = 2 + 2;
-        assert_eq!(result, 4);
-    }
-}
