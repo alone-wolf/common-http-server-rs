@@ -15,14 +15,14 @@ WebSocket group/event module extracted from `common-http-server-rs`.
 websocket = { git = "https://github.com/alone-wolf/common-http-server-rs.git", package = "websocket", branch = "main", default-features = false, features = ["server"] }
 ```
 
-## Client Init (Chain Style)
+## Minimal Usage
 
 ```rust
 use websocket::WebSocketClient;
 
 let mut client = WebSocketClient::builder("ws://127.0.0.1:3006/realtime/ws")
     .with_api_key_auth("dev-api-key-1")
-    .with_binary_messagepack()
+    .prefer_msgpack()
     .connect()
     .await?;
 
@@ -31,16 +31,14 @@ client
     .await?;
 ```
 
-服务端可通过 `hub.inspect()` 获取 inspection 快照（供运维面板使用）：
+服务端可通过 `hub.inspect()` 获取 inspection 快照：
 
 ```rust
 let snapshot = hub.inspect().await;
 println!("connections={}, groups={}", snapshot.total_connections, snapshot.total_groups);
 ```
 
-连接帧格式在握手阶段确定：
-- 服务端支持子协议：`chs.v1.msgpack` / `msgpack` / `chs.v1.json` / `json`（优先 MessagePack）。
-- `.with_binary_messagepack()`（等价 `.force_msgpack()`）会声明 `chs.v1.msgpack, msgpack`，连接必须协商到 MessagePack。
-- `.prefer_msgpack()` 会声明 `chs.v1.msgpack, msgpack, chs.v1.json, json`，优先 MessagePack，协商失败时可回落 JSON。
-- 默认/`.with_text_json()`（等价 `.force_json()`）使用 JSON 子协议。
-- 若运行时帧类型与协商格式不一致，服务端会返回 `frame_format_mismatch` 并关闭连接。
+## 详细文档
+
+- 详细接入与协议说明：`doc/WEBSOCKET_GUIDE.md`
+- 运行示例命令：`doc/SAMPLES.md`

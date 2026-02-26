@@ -2,6 +2,8 @@
 
 `common-http-server-rs/examples/` 下提供 7 个渐进式示例：
 
+> 本文档是示例运行命令的唯一维护入口；`README.md` 与其他文档只做链接引用。
+
 - `level1_basic.rs`  
   最小可运行启动链路（`ServerConfig + AppBuilder + Server`）。
 - `level2_app_config.rs`  
@@ -37,6 +39,8 @@ WebSocket group/event 已拆分到 workspace 子 crate：
 
 ```bash
 cargo run -p websocket --example websocket_group_events
+cargo run -p websocket --example websocket_cs_state_dashboard
+cargo run -p websocket --example websocket_cs_demo
 ```
 
 更多文档入口见 `doc/README.md`。

@@ -34,7 +34,7 @@ let app = Router::new()
     .nest("/panel", panel_routes(panel_state));
 ```
 
-Endpoints:
+## Endpoints
 
 - `/panel` : HTML dashboard
 - `/panel/api/snapshot` : combined JSON snapshot
@@ -42,3 +42,8 @@ Endpoints:
 - `/panel/api/websocket` : WebSocket hub inspection (404 if websocket hub not configured)
 
 Note: requests under `/panel` and `/monitor` are excluded from request counting stats by default.
+
+## 详细文档
+
+- 详细接入说明：`doc/HTTP_PANEL_GUIDE.md`
+- 运行示例命令：`doc/SAMPLES.md`

@@ -19,19 +19,7 @@ cargo run
 
 ### 2) 运行示例
 
-```bash
-cargo run --example level1_basic
-cargo run --example level2_app_config
-cargo run --example level3_security_and_monitoring
-cargo run --example level4_graceful_shutdown
-cargo run --example level5_terminal_ui
-cargo run --example level6_websocket_http_panel
-cargo run --example jwt_with_client --features external-health
-
-# WebSocket 示例（workspace 子 crate）
-cargo run -p websocket --example websocket_group_events
-cargo run -p websocket --example websocket_cs_state_dashboard
-```
+完整示例运行命令请统一参考：`doc/SAMPLES.md`（唯一维护入口）。
 
 ## 全局中间件编排器（推荐）
 
