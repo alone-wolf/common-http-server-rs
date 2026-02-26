@@ -7,7 +7,8 @@ use crate::auth::{
     AuthError, SharedAuthConfig, api_key_auth_middleware, basic_auth_middleware,
     jwt_auth_middleware,
 };
-use crate::core::logging::structured_logging_middleware;
+use crate::core::path_utils::{normalize_path, path_has_prefix_segment};
+use crate::core::runtime_layers::apply_runtime_layers;
 use crate::core::server::{AppConfig, ConfigError};
 use crate::monitoring::{
     MonitoringState, PerformanceMonitoringConfig, performance_monitoring_middleware_with_config,
@@ -49,29 +50,27 @@ impl PathScope {
     }
 
     pub fn include_exact(mut self, path: impl Into<String>) -> Self {
-        self.include_exact.push(normalize_scope_path(path.into()));
+        self.include_exact.push(normalize_path(path.into()));
         self
     }
 
     pub fn include_prefix(mut self, prefix: impl Into<String>) -> Self {
-        self.include_prefixes
-            .push(normalize_scope_path(prefix.into()));
+        self.include_prefixes.push(normalize_path(prefix.into()));
         self
     }
 
     pub fn exclude_exact(mut self, path: impl Into<String>) -> Self {
-        self.exclude_exact.push(normalize_scope_path(path.into()));
+        self.exclude_exact.push(normalize_path(path.into()));
         self
     }
 
     pub fn exclude_prefix(mut self, prefix: impl Into<String>) -> Self {
-        self.exclude_prefixes
-            .push(normalize_scope_path(prefix.into()));
+        self.exclude_prefixes.push(normalize_path(prefix.into()));
         self
     }
 
     pub fn matches(&self, path: &str) -> bool {
-        let path = normalize_scope_path(path.to_string());
+        let path = normalize_path(path);
         let included = if self.include_exact.is_empty() && self.include_prefixes.is_empty() {
             true
         } else {
@@ -317,50 +316,6 @@ async fn scoped_auth_middleware(
         GlobalAuthFallback::Allow => Ok(next.run(request).await),
         GlobalAuthFallback::DenyUnauthorized => Err(AuthError::MissingAuthHeader),
     }
-}
-
-fn apply_runtime_layers(mut router: Router, config: &AppConfig) -> Router {
-    if config.enable_logging {
-        router = router.layer(middleware::from_fn(structured_logging_middleware));
-    }
-
-    if config.enable_tracing {
-        router = router.layer(tower_http::trace::TraceLayer::new_for_http());
-    }
-
-    if let Some(cors_config) = config.get_cors_config() {
-        router = router.layer(cors_config.build_layer());
-    }
-
-    router
-}
-
-fn normalize_scope_path(path: String) -> String {
-    let trimmed = path.trim();
-    if trimmed.is_empty() {
-        return "/".to_string();
-    }
-
-    let with_leading = if trimmed.starts_with('/') {
-        trimmed.to_string()
-    } else {
-        format!("/{trimmed}")
-    };
-
-    if with_leading.len() > 1 && with_leading.ends_with('/') {
-        with_leading.trim_end_matches('/').to_string()
-    } else {
-        with_leading
-    }
-}
-
-fn path_has_prefix_segment(path: &str, prefix: &str) -> bool {
-    if prefix == "/" {
-        return true;
-    }
-
-    path.strip_prefix(prefix)
-        .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
 }
 
 #[cfg(test)]

@@ -5,9 +5,8 @@
 
 use crate::core::{
     app::AppBuilder, cors::CorsConfig, logging::LoggingConfig, logging::init_logging,
-    logging::structured_logging_middleware,
+    runtime_layers::apply_runtime_layers,
 };
-use axum::{Router, middleware};
 use std::net::SocketAddr;
 use tracing::{error, info};
 
@@ -233,7 +232,7 @@ impl Server {
                     .map_err(|e| format!("Invalid orchestrator configuration: {}", e))?;
                 orchestrator.apply(app, &app_config)
             }
-            None => apply_app_layers(app, &app_config),
+            None => apply_runtime_layers(app, &app_config),
         };
 
         let addr = self
@@ -260,24 +259,6 @@ impl Server {
 
         Ok(())
     }
-}
-
-fn apply_app_layers(mut router: Router, config: &AppConfig) -> Router {
-    // Keep middleware assembly centralized so route composition and runtime
-    // concerns stay separated.
-    if config.enable_logging {
-        router = router.layer(middleware::from_fn(structured_logging_middleware));
-    }
-
-    if config.enable_tracing {
-        router = router.layer(tower_http::trace::TraceLayer::new_for_http());
-    }
-
-    if let Some(cors_config) = config.get_cors_config() {
-        router = router.layer(cors_config.build_layer());
-    }
-
-    router
 }
 
 fn print_default_endpoints(addr: SocketAddr) {

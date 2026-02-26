@@ -3,6 +3,7 @@
 //! - request performance middleware
 //! - health-check utilities
 
+use crate::core::path_utils::{normalize_path, path_has_prefix_segment};
 use axum::body::HttpBody;
 use axum::{
     Json,
@@ -61,15 +62,13 @@ impl PerformanceMonitoringConfig {
 
     pub fn exclude_request_count_path_prefix(mut self, prefix: impl Into<String>) -> Self {
         self.excluded_request_count_path_prefixes
-            .push(normalize_path_prefix(prefix.into()));
+            .push(normalize_path(prefix.into()));
         self
     }
 
     pub fn with_excluded_request_count_path_prefixes(mut self, prefixes: Vec<String>) -> Self {
-        self.excluded_request_count_path_prefixes = prefixes
-            .into_iter()
-            .map(normalize_path_prefix)
-            .collect::<Vec<_>>();
+        self.excluded_request_count_path_prefixes =
+            prefixes.into_iter().map(normalize_path).collect::<Vec<_>>();
         self
     }
 }
@@ -563,33 +562,6 @@ fn is_excluded_request_count_path_with_prefixes(path: &str, prefixes: &[String])
         .any(|prefix| path_has_prefix_segment(path, prefix))
 }
 
-fn path_has_prefix_segment(path: &str, prefix: &str) -> bool {
-    if prefix == "/" {
-        return true;
-    }
-
-    path.strip_prefix(prefix)
-        .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
-}
-
-fn normalize_path_prefix(prefix: String) -> String {
-    let trimmed = prefix.trim();
-    if trimmed.is_empty() {
-        return "/".to_string();
-    }
-    let with_leading = if trimmed.starts_with('/') {
-        trimmed.to_string()
-    } else {
-        format!("/{trimmed}")
-    };
-
-    if with_leading.len() > 1 && with_leading.ends_with('/') {
-        with_leading.trim_end_matches('/').to_string()
-    } else {
-        with_leading
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct HealthCheckConfig {
     pub database_url: Option<String>,
@@ -620,33 +592,52 @@ pub struct HealthCheckResult {
     pub response_time_ms: Option<u64>,
 }
 
+fn health_healthy(response_time_ms: Option<u64>) -> HealthCheckResult {
+    HealthCheckResult {
+        status: "healthy".to_string(),
+        message: None,
+        response_time_ms,
+    }
+}
+
+fn health_unhealthy(
+    message: impl Into<String>,
+    response_time_ms: Option<u64>,
+) -> HealthCheckResult {
+    HealthCheckResult {
+        status: "unhealthy".to_string(),
+        message: Some(message.into()),
+        response_time_ms,
+    }
+}
+
+fn health_disabled(message: impl Into<String>, response_time_ms: Option<u64>) -> HealthCheckResult {
+    HealthCheckResult {
+        status: "disabled".to_string(),
+        message: Some(message.into()),
+        response_time_ms,
+    }
+}
+
 pub async fn enhanced_health_check(
     State(state): State<MonitoringState>,
     config: Option<Json<HealthCheckConfig>>,
 ) -> impl IntoResponse {
     let mut checks = HashMap::new();
 
-    checks.insert(
-        "server".to_string(),
-        HealthCheckResult {
-            status: "healthy".to_string(),
-            message: None,
-            response_time_ms: None,
-        },
-    );
+    checks.insert("server".to_string(), health_healthy(None));
 
     if let Some(config) = config {
         if config.has_runtime_targets() && !runtime_health_targets_allowed() {
             checks.insert(
                 "runtime_targets".to_string(),
-                HealthCheckResult {
-                    status: "unhealthy".to_string(),
-                    message: Some(format!(
+                health_unhealthy(
+                    format!(
                         "Runtime health targets are disabled. Set {}=true to allow.",
                         ALLOW_RUNTIME_HEALTH_TARGETS_ENV
-                    )),
-                    response_time_ms: None,
-                },
+                    ),
+                    None,
+                ),
             );
         } else {
             if let Some(database_url) = &config.database_url {
@@ -667,14 +658,10 @@ pub async fn enhanced_health_check(
             {
                 let service_check = match validate_external_service_target(service).await {
                     Ok(_) => check_external_service(service).await,
-                    Err(message) => HealthCheckResult {
-                        status: "unhealthy".to_string(),
-                        message: Some(format!(
-                            "External service target '{}' blocked: {}",
-                            service, message
-                        )),
-                        response_time_ms: None,
-                    },
+                    Err(message) => health_unhealthy(
+                        format!("External service target '{}' blocked: {}", service, message),
+                        None,
+                    ),
                 };
                 checks.insert(format!("service_{}", index + 1), service_check);
             }
@@ -682,15 +669,14 @@ pub async fn enhanced_health_check(
             if config.external_services.len() > MAX_EXTERNAL_SERVICE_CHECKS {
                 checks.insert(
                     "external_services_truncated".to_string(),
-                    HealthCheckResult {
-                        status: "disabled".to_string(),
-                        message: Some(format!(
+                    health_disabled(
+                        format!(
                             "Skipped {} external checks; maximum is {} per request",
                             config.external_services.len() - MAX_EXTERNAL_SERVICE_CHECKS,
                             MAX_EXTERNAL_SERVICE_CHECKS
-                        )),
-                        response_time_ms: None,
-                    },
+                        ),
+                        None,
+                    ),
                 );
             }
         }
@@ -856,41 +842,30 @@ async fn check_database_connection(database_url: &str) -> HealthCheckResult {
                 pool.close().await;
 
                 match query_result {
-                    Ok(Ok(_)) => HealthCheckResult {
-                        status: "healthy".to_string(),
-                        message: None,
-                        response_time_ms: Some(start_time.elapsed().as_millis() as u64),
-                    },
-                    Ok(Err(e)) => HealthCheckResult {
-                        status: "unhealthy".to_string(),
-                        message: Some(format!("Database query failed: {}", e)),
-                        response_time_ms: Some(start_time.elapsed().as_millis() as u64),
-                    },
-                    Err(_) => HealthCheckResult {
-                        status: "unhealthy".to_string(),
-                        message: Some("Database query timed out".to_string()),
-                        response_time_ms: Some(start_time.elapsed().as_millis() as u64),
-                    },
+                    Ok(Ok(_)) => health_healthy(Some(start_time.elapsed().as_millis() as u64)),
+                    Ok(Err(e)) => health_unhealthy(
+                        format!("Database query failed: {}", e),
+                        Some(start_time.elapsed().as_millis() as u64),
+                    ),
+                    Err(_) => health_unhealthy(
+                        "Database query timed out",
+                        Some(start_time.elapsed().as_millis() as u64),
+                    ),
                 }
             }
-            Err(e) => HealthCheckResult {
-                status: "unhealthy".to_string(),
-                message: Some(format!("Database connection failed: {}", e)),
-                response_time_ms: Some(start_time.elapsed().as_millis() as u64),
-            },
+            Err(e) => health_unhealthy(
+                format!("Database connection failed: {}", e),
+                Some(start_time.elapsed().as_millis() as u64),
+            ),
         }
     }
 
     #[cfg(not(feature = "database-health"))]
     {
-        HealthCheckResult {
-            status: "disabled".to_string(),
-            message: Some(
-                "Database health checks not enabled. Enable with 'database-health' feature."
-                    .to_string(),
-            ),
-            response_time_ms: Some(start_time.elapsed().as_millis() as u64),
-        }
+        health_disabled(
+            "Database health checks not enabled. Enable with 'database-health' feature.",
+            Some(start_time.elapsed().as_millis() as u64),
+        )
     }
 }
 
@@ -905,50 +880,39 @@ async fn check_redis_connection(redis_url: &str) -> HealthCheckResult {
                 Ok(client) => match client.get_multiplexed_async_connection().await {
                     Ok(mut conn) => match redis::cmd("PING").query_async::<String>(&mut conn).await
                     {
-                        Ok(_) => HealthCheckResult {
-                            status: "healthy".to_string(),
-                            message: None,
-                            response_time_ms: Some(start_time.elapsed().as_millis() as u64),
-                        },
-                        Err(e) => HealthCheckResult {
-                            status: "unhealthy".to_string(),
-                            message: Some(format!("Redis PING failed: {}", e)),
-                            response_time_ms: Some(start_time.elapsed().as_millis() as u64),
-                        },
+                        Ok(_) => health_healthy(Some(start_time.elapsed().as_millis() as u64)),
+                        Err(e) => health_unhealthy(
+                            format!("Redis PING failed: {}", e),
+                            Some(start_time.elapsed().as_millis() as u64),
+                        ),
                     },
-                    Err(e) => HealthCheckResult {
-                        status: "unhealthy".to_string(),
-                        message: Some(format!("Redis connection failed: {}", e)),
-                        response_time_ms: Some(start_time.elapsed().as_millis() as u64),
-                    },
+                    Err(e) => health_unhealthy(
+                        format!("Redis connection failed: {}", e),
+                        Some(start_time.elapsed().as_millis() as u64),
+                    ),
                 },
-                Err(e) => HealthCheckResult {
-                    status: "unhealthy".to_string(),
-                    message: Some(format!("Redis client creation failed: {}", e)),
-                    response_time_ms: Some(start_time.elapsed().as_millis() as u64),
-                },
+                Err(e) => health_unhealthy(
+                    format!("Redis client creation failed: {}", e),
+                    Some(start_time.elapsed().as_millis() as u64),
+                ),
             }
         })
         .await
         {
             Ok(result) => result,
-            Err(_) => HealthCheckResult {
-                status: "unhealthy".to_string(),
-                message: Some("Redis health check timed out".to_string()),
-                response_time_ms: Some(start_time.elapsed().as_millis() as u64),
-            },
+            Err(_) => health_unhealthy(
+                "Redis health check timed out",
+                Some(start_time.elapsed().as_millis() as u64),
+            ),
         }
     }
 
     #[cfg(not(feature = "redis-health"))]
     {
-        HealthCheckResult {
-            status: "disabled".to_string(),
-            message: Some(
-                "Redis health checks not enabled. Enable with 'redis-health' feature.".to_string(),
-            ),
-            response_time_ms: Some(start_time.elapsed().as_millis() as u64),
-        }
+        health_disabled(
+            "Redis health checks not enabled. Enable with 'redis-health' feature.",
+            Some(start_time.elapsed().as_millis() as u64),
+        )
     }
 }
 
@@ -965,45 +929,37 @@ async fn check_external_service(service_url: &str) -> HealthCheckResult {
         {
             Ok(client) => client,
             Err(e) => {
-                return HealthCheckResult {
-                    status: "unhealthy".to_string(),
-                    message: Some(format!("HTTP client initialization failed: {}", e)),
-                    response_time_ms: Some(start_time.elapsed().as_millis() as u64),
-                };
+                return health_unhealthy(
+                    format!("HTTP client initialization failed: {}", e),
+                    Some(start_time.elapsed().as_millis() as u64),
+                );
             }
         };
 
         match client.get(service_url).send().await {
             Ok(response) => {
                 if response.status().is_success() {
-                    HealthCheckResult {
-                        status: "healthy".to_string(),
-                        message: None,
-                        response_time_ms: Some(start_time.elapsed().as_millis() as u64),
-                    }
+                    health_healthy(Some(start_time.elapsed().as_millis() as u64))
                 } else {
-                    HealthCheckResult {
-                        status: "unhealthy".to_string(),
-                        message: Some(format!("Service returned status: {}", response.status())),
-                        response_time_ms: Some(start_time.elapsed().as_millis() as u64),
-                    }
+                    health_unhealthy(
+                        format!("Service returned status: {}", response.status()),
+                        Some(start_time.elapsed().as_millis() as u64),
+                    )
                 }
             }
-            Err(e) => HealthCheckResult {
-                status: "unhealthy".to_string(),
-                message: Some(format!("Service request failed: {}", e)),
-                response_time_ms: Some(start_time.elapsed().as_millis() as u64),
-            },
+            Err(e) => health_unhealthy(
+                format!("Service request failed: {}", e),
+                Some(start_time.elapsed().as_millis() as u64),
+            ),
         }
     }
 
     #[cfg(not(feature = "external-health"))]
     {
-        HealthCheckResult {
-            status: "disabled".to_string(),
-            message: Some("External service health checks not enabled. Enable with 'external-health' feature.".to_string()),
-            response_time_ms: Some(start_time.elapsed().as_millis() as u64),
-        }
+        health_disabled(
+            "External service health checks not enabled. Enable with 'external-health' feature.",
+            Some(start_time.elapsed().as_millis() as u64),
+        )
     }
 }
 
@@ -1234,21 +1190,10 @@ mod tests {
     #[test]
     fn disabled_checks_do_not_make_overall_status_unhealthy() {
         let checks = HashMap::from([
-            (
-                "server".to_string(),
-                HealthCheckResult {
-                    status: "healthy".to_string(),
-                    message: None,
-                    response_time_ms: None,
-                },
-            ),
+            ("server".to_string(), health_healthy(None)),
             (
                 "database".to_string(),
-                HealthCheckResult {
-                    status: "disabled".to_string(),
-                    message: Some("feature disabled".to_string()),
-                    response_time_ms: None,
-                },
+                health_disabled("feature disabled", None),
             ),
         ]);
 

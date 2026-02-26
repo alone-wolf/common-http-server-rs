@@ -491,14 +491,7 @@ fn anonymous_actor(connection_id: &str) -> EventActor {
 }
 
 fn validate_group_name(group: &str) -> Result<(), WebSocketError> {
-    if group.is_empty() || group.len() > 64 {
-        return Err(WebSocketError::InvalidGroup);
-    }
-
-    if !group
-        .chars()
-        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.' | ':'))
-    {
+    if !is_valid_token_name(group, 64) {
         return Err(WebSocketError::InvalidGroup);
     }
 
@@ -506,18 +499,19 @@ fn validate_group_name(group: &str) -> Result<(), WebSocketError> {
 }
 
 fn validate_event_name(event: &str) -> Result<(), WebSocketError> {
-    if event.is_empty() || event.len() > 64 {
-        return Err(WebSocketError::InvalidEvent);
-    }
-
-    if !event
-        .chars()
-        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.' | ':'))
-    {
+    if !is_valid_token_name(event, 64) {
         return Err(WebSocketError::InvalidEvent);
     }
 
     Ok(())
+}
+
+fn is_valid_token_name(name: &str, max_len: usize) -> bool {
+    !name.is_empty()
+        && name.len() <= max_len
+        && name
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.' | ':'))
 }
 
 fn validate_target_connection_id(connection_id: &str) -> Result<(), WebSocketError> {
