@@ -164,7 +164,7 @@ let cors_config = CorsConfig::new()
 .max_age(300)    // 5 分钟，适合开发环境
 ```
 
-## 🧪 测试 CORS
+## 🧪 测试与调试 CORS
 
 ### 测试预检请求
 ```bash
@@ -183,27 +183,26 @@ curl -v \
   http://localhost:3000/test
 ```
 
-## 📝 示例项目
-
-查看 `src/main.rs` 了解当前 CORS 配置示例（包含 `CorsConfig` 的链式配置）：
-
-```bash
-# 运行 common-http-server-rs 内置示例应用
-cargo run -p common-http-server-rs
-```
-
-## 🔍 调试 CORS
-
+### 调试日志
 启用日志记录来调试 CORS 问题：
 
 ```bash
-RUST_LOG=debug cargo run -p common-http-server-rs
+RUST_LOG=debug cargo run -p common-http-server-rs --example level2_app_config
 ```
 
 日志会显示：
 - CORS 配置模式
 - 预检请求处理
 - 实际请求的 CORS 头
+
+## 📝 示例项目
+
+查看 `examples/level2_app_config.rs` 了解当前 CORS 配置示例（包含 `CorsConfig` 的链式配置）：
+
+```bash
+# 运行 CORS 配置示例
+cargo run -p common-http-server-rs --example level2_app_config
+```
 
 ## 🛡️ 安全最佳实践
 

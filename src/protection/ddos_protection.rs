@@ -12,7 +12,7 @@ use axum::{
 use dashmap::DashMap;
 use ipnet::IpNet;
 use std::{
-    collections::VecDeque,
+    collections::{HashSet, VecDeque},
     net::{IpAddr, SocketAddr},
     sync::{
         Arc,
@@ -303,68 +303,40 @@ impl DdosProtectionService {
         Ok(())
     }
 
-    fn increment_total_requests(&self) {
+    fn update_global_metrics(&self, mut update: impl FnMut(&mut DdosMetrics)) {
         if !self.config.enable_metrics {
             return;
         }
 
-        if let Some(mut metrics) = self.metrics.get_mut(GLOBAL_METRICS_KEY) {
+        let mut metrics = self
+            .metrics
+            .entry(GLOBAL_METRICS_KEY.to_string())
+            .or_insert_with(DdosMetrics::default);
+        update(&mut metrics);
+    }
+
+    fn increment_total_requests(&self) {
+        self.update_global_metrics(|metrics| {
             metrics.total_requests = metrics.total_requests.saturating_add(1);
-        } else {
-            self.metrics.insert(
-                GLOBAL_METRICS_KEY.to_string(),
-                DdosMetrics {
-                    total_requests: 1,
-                    ..DdosMetrics::default()
-                },
-            );
-        }
+        });
     }
 
     fn increment_blocked_requests(&self) {
-        if !self.config.enable_metrics {
-            return;
-        }
-
-        if let Some(mut metrics) = self.metrics.get_mut(GLOBAL_METRICS_KEY) {
+        self.update_global_metrics(|metrics| {
             metrics.blocked_requests = metrics.blocked_requests.saturating_add(1);
-        } else {
-            self.metrics.insert(
-                GLOBAL_METRICS_KEY.to_string(),
-                DdosMetrics {
-                    blocked_requests: 1,
-                    ..DdosMetrics::default()
-                },
-            );
-        }
+        });
     }
 
     fn increment_active_connections_metric(&self) {
-        if !self.config.enable_metrics {
-            return;
-        }
-
-        if let Some(mut metrics) = self.metrics.get_mut(GLOBAL_METRICS_KEY) {
+        self.update_global_metrics(|metrics| {
             metrics.active_connections = metrics.active_connections.saturating_add(1);
-        } else {
-            self.metrics.insert(
-                GLOBAL_METRICS_KEY.to_string(),
-                DdosMetrics {
-                    active_connections: 1,
-                    ..DdosMetrics::default()
-                },
-            );
-        }
+        });
     }
 
     fn decrement_active_connections_metric(&self) {
-        if !self.config.enable_metrics {
-            return;
-        }
-
-        if let Some(mut metrics) = self.metrics.get_mut(GLOBAL_METRICS_KEY) {
+        self.update_global_metrics(|metrics| {
             metrics.active_connections = metrics.active_connections.saturating_sub(1);
-        }
+        });
     }
 
     fn try_acquire_connection(&self) -> Result<(), DdosError> {
@@ -563,7 +535,7 @@ impl DdosProtectionService {
                 interval.tick().await;
 
                 let now = Instant::now();
-                let mut to_remove = Vec::new();
+                let mut to_remove = HashSet::new();
 
                 for entry in ip_metrics.iter() {
                     let (ip, metrics) = entry.pair();
@@ -573,12 +545,12 @@ impl DdosProtectionService {
                         && let Some(expires) = metrics.ban_expires
                         && expires <= now
                     {
-                        to_remove.push(*ip);
+                        to_remove.insert(*ip);
                     }
 
                     // Remove old metrics
                     if now.duration_since(metrics.last_request) > config.tracking_window {
-                        to_remove.push(*ip);
+                        to_remove.insert(*ip);
                     }
                 }
 

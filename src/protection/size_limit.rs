@@ -92,26 +92,19 @@ impl SizeLimitService {
     pub fn check_request_size(&self, request: &Request) -> Result<(), SizeLimitError> {
         // Check URL length
         let uri = request.uri();
-        if uri
+        let url_len = uri
             .path_and_query()
             .map(|pq| pq.as_str().len())
-            .unwrap_or(0)
-            > self.config.max_url_length
-        {
+            .unwrap_or(0);
+        if url_len > self.config.max_url_length {
             if self.config.log_violations {
                 warn!(
                     "URL length {} exceeds limit {}",
-                    uri.path_and_query()
-                        .map(|pq| pq.as_str().len())
-                        .unwrap_or(0),
-                    self.config.max_url_length
+                    url_len, self.config.max_url_length
                 );
             }
             return Err(SizeLimitError::UrlTooLong {
-                actual: uri
-                    .path_and_query()
-                    .map(|pq| pq.as_str().len())
-                    .unwrap_or(0),
+                actual: url_len,
                 limit: self.config.max_url_length,
             });
         }
@@ -133,10 +126,8 @@ impl SizeLimitService {
 
         // Check Content-Length header if enabled
         if self.config.check_content_length
-            && let Some(content_length) = request.headers().get("content-length")
-            && let Ok(length) = content_length.to_str()
-            && let Ok(size) = length.parse::<usize>()
-            && size > self.config.max_body_size
+            && let Some(size) =
+                content_length_exceeded(request.headers(), self.config.max_body_size)
         {
             if self.config.log_violations {
                 warn!(
@@ -254,11 +245,7 @@ pub async fn content_length_middleware(
     next: Next,
 ) -> Result<Response, SizeLimitError> {
     // Only check Content-Length header, don't read the entire body
-    if let Some(content_length) = request.headers().get("content-length")
-        && let Ok(length_str) = content_length.to_str()
-        && let Ok(size) = length_str.parse::<usize>()
-        && size > service.config.max_body_size
-    {
+    if let Some(size) = content_length_exceeded(request.headers(), service.config.max_body_size) {
         if service.config.log_violations {
             warn!(
                 "Content-Length {} exceeds limit {}",
@@ -272,6 +259,15 @@ pub async fn content_length_middleware(
     }
 
     Ok(next.run(request).await)
+}
+
+fn content_length_exceeded(headers: &HeaderMap, max_body_size: usize) -> Option<usize> {
+    let size = headers
+        .get("content-length")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<usize>().ok())?;
+
+    (size > max_body_size).then_some(size)
 }
 
 pub mod presets {

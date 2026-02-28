@@ -41,6 +41,32 @@ pub fn extract_client_ip_with_trusted_proxies(
 
 fn extract_from_forwarded(headers: &HeaderMap) -> Option<IpAddr> {
     let forwarded = headers.get("forwarded")?.to_str().ok()?;
+    parse_forwarded_header_ips(forwarded).into_iter().next()
+}
+
+fn extract_from_x_forwarded_for(headers: &HeaderMap) -> Option<IpAddr> {
+    let forwarded_for = headers.get("x-forwarded-for")?.to_str().ok()?;
+    parse_x_forwarded_for_ips(forwarded_for).into_iter().next()
+}
+
+fn extract_forwarded_chain(headers: &HeaderMap) -> Vec<IpAddr> {
+    let mut chain = Vec::new();
+
+    if let Some(forwarded) = headers.get("forwarded").and_then(|h| h.to_str().ok()) {
+        chain.extend(parse_forwarded_header_ips(forwarded));
+    }
+
+    if chain.is_empty()
+        && let Some(xff) = headers.get("x-forwarded-for").and_then(|h| h.to_str().ok())
+    {
+        chain.extend(parse_x_forwarded_for_ips(xff));
+    }
+
+    chain
+}
+
+fn parse_forwarded_header_ips(forwarded: &str) -> Vec<IpAddr> {
+    let mut chain = Vec::new();
 
     for part in forwarded.split(',') {
         for token in part.split(';') {
@@ -48,49 +74,20 @@ fn extract_from_forwarded(headers: &HeaderMap) -> Option<IpAddr> {
             if let Some(value) = token.strip_prefix("for=")
                 && let Some(ip) = parse_ip_value(value)
             {
-                return Some(ip);
+                chain.push(ip);
             }
         }
     }
 
-    None
+    chain
 }
 
-fn extract_from_x_forwarded_for(headers: &HeaderMap) -> Option<IpAddr> {
-    let forwarded_for = headers.get("x-forwarded-for")?.to_str().ok()?;
+fn parse_x_forwarded_for_ips(forwarded_for: &str) -> Vec<IpAddr> {
+    let mut chain = Vec::new();
 
     for candidate in forwarded_for.split(',') {
         if let Some(ip) = parse_ip_value(candidate) {
-            return Some(ip);
-        }
-    }
-
-    None
-}
-
-fn extract_forwarded_chain(headers: &HeaderMap) -> Vec<IpAddr> {
-    let mut chain = Vec::new();
-
-    if let Some(forwarded) = headers.get("forwarded").and_then(|h| h.to_str().ok()) {
-        for part in forwarded.split(',') {
-            for token in part.split(';') {
-                let token = token.trim();
-                if let Some(value) = token.strip_prefix("for=")
-                    && let Some(ip) = parse_ip_value(value)
-                {
-                    chain.push(ip);
-                }
-            }
-        }
-    }
-
-    if chain.is_empty()
-        && let Some(xff) = headers.get("x-forwarded-for").and_then(|h| h.to_str().ok())
-    {
-        for candidate in xff.split(',') {
-            if let Some(ip) = parse_ip_value(candidate) {
-                chain.push(ip);
-            }
+            chain.push(ip);
         }
     }
 
