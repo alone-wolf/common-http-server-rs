@@ -311,7 +311,7 @@ impl DdosProtectionService {
         let mut metrics = self
             .metrics
             .entry(GLOBAL_METRICS_KEY.to_string())
-            .or_insert_with(DdosMetrics::default);
+            .or_default();
         update(&mut metrics);
     }
 

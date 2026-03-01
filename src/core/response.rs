@@ -12,14 +12,18 @@ pub struct ApiResponse<T> {
 }
 
 impl<T> ApiResponse<T> {
-    pub fn success(data: T) -> Self {
+    pub fn success_with_status(data: T, status: StatusCode) -> Self {
         Self {
             success: true,
             data: Some(data),
             error: None,
             request_id: None,
-            status_code: Some(StatusCode::OK.as_u16()),
+            status_code: Some(status.as_u16()),
         }
+    }
+
+    pub fn success(data: T) -> Self {
+        Self::success_with_status(data, StatusCode::OK)
     }
 
     pub fn success_with_request_id(data: T, request_id: String) -> Self {
@@ -60,6 +64,66 @@ impl<T> ApiResponse<T> {
             request_id: None,
             status_code: Some(status.as_u16()),
         }
+    }
+
+    pub fn ok(data: T) -> Self {
+        Self::success_with_status(data, StatusCode::OK)
+    }
+
+    pub fn created(data: T) -> Self {
+        Self::success_with_status(data, StatusCode::CREATED)
+    }
+
+    pub fn accepted(data: T) -> Self {
+        Self::success_with_status(data, StatusCode::ACCEPTED)
+    }
+}
+
+impl ApiResponse<()> {
+    pub fn no_content() -> Self {
+        Self {
+            success: true,
+            data: None,
+            error: None,
+            request_id: None,
+            status_code: Some(StatusCode::NO_CONTENT.as_u16()),
+        }
+    }
+
+    pub fn bad_request(error: impl Into<String>) -> Self {
+        Self::error_with_status(error.into(), StatusCode::BAD_REQUEST)
+    }
+
+    pub fn unauthorized(error: impl Into<String>) -> Self {
+        Self::error_with_status(error.into(), StatusCode::UNAUTHORIZED)
+    }
+
+    pub fn forbidden(error: impl Into<String>) -> Self {
+        Self::error_with_status(error.into(), StatusCode::FORBIDDEN)
+    }
+
+    pub fn not_found(error: impl Into<String>) -> Self {
+        Self::error_with_status(error.into(), StatusCode::NOT_FOUND)
+    }
+
+    pub fn conflict(error: impl Into<String>) -> Self {
+        Self::error_with_status(error.into(), StatusCode::CONFLICT)
+    }
+
+    pub fn unprocessable_entity(error: impl Into<String>) -> Self {
+        Self::error_with_status(error.into(), StatusCode::UNPROCESSABLE_ENTITY)
+    }
+
+    pub fn too_many_requests(error: impl Into<String>) -> Self {
+        Self::error_with_status(error.into(), StatusCode::TOO_MANY_REQUESTS)
+    }
+
+    pub fn internal_server_error(error: impl Into<String>) -> Self {
+        Self::error_with_status(error.into(), StatusCode::INTERNAL_SERVER_ERROR)
+    }
+
+    pub fn service_unavailable(error: impl Into<String>) -> Self {
+        Self::error_with_status(error.into(), StatusCode::SERVICE_UNAVAILABLE)
     }
 }
 
@@ -114,5 +178,48 @@ impl IntoResponse for HealthResponse {
         };
 
         (status, Json(self)).into_response()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ok_shortcut_sets_success_and_200() {
+        let response = ApiResponse::ok("ok");
+        assert!(response.success);
+        assert_eq!(response.status_code, Some(StatusCode::OK.as_u16()));
+    }
+
+    #[test]
+    fn created_shortcut_sets_201() {
+        let response = ApiResponse::created("created");
+        assert_eq!(response.status_code, Some(StatusCode::CREATED.as_u16()));
+    }
+
+    #[test]
+    fn no_content_shortcut_sets_204_without_data() {
+        let response = ApiResponse::no_content();
+        assert!(response.success);
+        assert!(response.data.is_none());
+        assert_eq!(response.status_code, Some(StatusCode::NO_CONTENT.as_u16()));
+    }
+
+    #[test]
+    fn not_found_shortcut_sets_error_and_404() {
+        let response = ApiResponse::not_found("missing");
+        assert!(!response.success);
+        assert_eq!(response.error.as_deref(), Some("missing"));
+        assert_eq!(response.status_code, Some(StatusCode::NOT_FOUND.as_u16()));
+    }
+
+    #[test]
+    fn too_many_requests_shortcut_sets_429() {
+        let response = ApiResponse::too_many_requests("limit exceeded");
+        assert_eq!(
+            response.status_code,
+            Some(StatusCode::TOO_MANY_REQUESTS.as_u16())
+        );
     }
 }
