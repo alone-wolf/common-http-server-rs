@@ -61,6 +61,9 @@ pub use monitoring::{
     setup_metrics_recorder,
 };
 
+#[cfg(feature = "http-socket")]
+pub use http_socket;
+
 /// 便捷函数：快速创建并启动服务器
 pub async fn quick_start(port: u16) -> Result<(), Box<dyn std::error::Error>> {
     let server_config = ServerConfig::new(port);

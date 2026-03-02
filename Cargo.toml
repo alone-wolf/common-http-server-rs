@@ -17,10 +17,11 @@ exclude = [
     ".idea/**",
     "websocket/**",
     "http-panel/**",
+    "http-socket/**",
 ]
 
 [workspace]
-members = [".", "websocket", "http-panel"]
+members = [".", "websocket", "http-panel", "http-socket"]
 resolver = "2"
 
 [dependencies]
@@ -55,6 +56,7 @@ sysinfo = "0.38.2"
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres"], optional = true }
 redis = { version = "1.0.4", features = ["tokio-comp"], optional = true }
 reqwest = { version = "0.13.2", features = ["json"], optional = true }
+http_socket = { package = "http-socket", path = "http-socket", optional = true, default-features = false, features = ["axum", "ws", "server"] }
 
 [features]
 default = []
@@ -62,6 +64,7 @@ database-health = ["sqlx"]
 redis-health = ["redis"]
 external-health = ["reqwest"]
 full-health = ["database-health", "redis-health", "external-health"]
+http-socket = ["dep:http_socket"]
 
 [dev-dependencies]
 websocket = { path = "websocket", default-features = false, features = ["server"] }
