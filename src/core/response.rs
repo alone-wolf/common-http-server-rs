@@ -139,6 +139,10 @@ impl<T: Serialize> IntoResponse for ApiResponse<T> {
             .and_then(|code| StatusCode::from_u16(code).ok())
             .unwrap_or(default_status);
 
+        if status == StatusCode::NO_CONTENT {
+            return status.into_response();
+        }
+
         (status, Json(self)).into_response()
     }
 }
@@ -184,6 +188,7 @@ impl IntoResponse for HealthResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use http_body_util::BodyExt;
 
     #[test]
     fn ok_shortcut_sets_success_and_200() {
@@ -221,5 +226,13 @@ mod tests {
             response.status_code,
             Some(StatusCode::TOO_MANY_REQUESTS.as_u16())
         );
+    }
+
+    #[tokio::test]
+    async fn no_content_into_response_has_empty_body() {
+        let response = ApiResponse::no_content().into_response();
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        assert!(bytes.is_empty());
     }
 }
